@@ -1,0 +1,76 @@
+:root {
+  --sea: #0e3b5c;
+  --sea-line: #1f5f8b;
+  --ship: #7d8a96;
+  --hit: #d9412b;
+  --miss: #cfe6f5;
+  --bg: #08243a;
+  --text: #f2f6f9;
+  --focus: #ffd23f;
+  --cell: min(2.2rem, calc((100vw - 3rem) / 15));
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.4;
+}
+
+main { max-width: 44rem; margin: 0 auto; padding: 1rem; }
+
+h1 { margin-top: 0; }
+
+.status {
+  min-height: 1.4em;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
+
+button, input {
+  font: inherit;
+  padding: 0.45rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #5c7d96;
+}
+button { background: #1c4f75; color: var(--text); cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+input { background: #fff; color: #111; }
+
+.hint { opacity: 0.85; margin-top: 0; }
+
+.grid { display: inline-block; user-select: none; margin-bottom: 0.5rem; }
+.grid-row { display: flex; }
+
+.axis {
+  width: var(--cell); height: var(--cell);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; opacity: 0.8;
+}
+
+.cell {
+  width: var(--cell); height: var(--cell);
+  background: var(--sea);
+  border: 1px solid var(--sea-line);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cell.ship { background: var(--ship); }
+.cell.miss { color: var(--miss); }
+.cell.hit { background: var(--hit); color: #fff; }
+.cell.sunk { background: #6e1a10; color: #fff; }
+.cell:focus { outline: 3px solid var(--focus); outline-offset: -3px; z-index: 1; }
+
+#fleet-status ul { margin: 0.25rem 0 0.75rem; padding-left: 1.2rem; }
+#fleet-status li.sunk { text-decoration: line-through; opacity: 0.7; }
+
+details { margin-top: 1.5rem; }
+summary { cursor: pointer; font-weight: 600; }

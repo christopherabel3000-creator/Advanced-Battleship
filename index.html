@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Battleship</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Advanced Battleship</h1>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <section id="setup" aria-labelledby="setup-h">
+      <h2 id="setup-h">Place your fleet</h2>
+      <p id="placing"></p>
+      <div class="controls">
+        <button type="button" id="rotate">Rotate</button>
+        <button type="button" id="random">Random placement</button>
+        <button type="button" id="clear">Clear</button>
+        <button type="button" id="start" disabled>Start battle</button>
+      </div>
+    </section>
+
+    <section id="enemy-section" aria-labelledby="enemy-h" hidden>
+      <h2 id="enemy-h">Enemy waters</h2>
+      <div id="enemy-grid" class="grid"></div>
+      <form id="fire-form" class="controls">
+        <label for="fire-input">Fire at</label>
+        <input id="fire-input" type="text" autocomplete="off" autocapitalize="characters" size="5">
+        <button type="submit">Fire</button>
+      </form>
+    </section>
+
+    <section id="player-section" aria-labelledby="player-h">
+      <h2 id="player-h">Your fleet</h2>
+      <p id="player-hint" class="hint">Choose the top or left end of each ship on the grid.</p>
+      <div id="player-grid" class="grid"></div>
+    </section>
+
+    <section id="over" aria-labelledby="over-h" hidden>
+      <h2 id="over-h">Game over</h2>
+      <p id="over-text" tabindex="-1"></p>
+      <button type="button" id="new-game">New game</button>
+    </section>
+
+    <section id="fleet-status" aria-labelledby="fleet-h" hidden>
+      <h2 id="fleet-h">Fleet status</h2>
+      <h3>Enemy</h3>
+      <ul id="enemy-ships"></ul>
+      <h3>Yours</h3>
+      <ul id="player-ships"></ul>
+    </section>
+
+    <details>
+      <summary>How to play</summary>
+      <p>The grid has rows A to J from top to bottom and columns 1 to 14 from left to right. A1 is the top left corner and J14 is the bottom right.</p>
+      <ul>
+        <li>Arrow keys move around a grid. Home and End go to the start or end of a row; Page Up and Page Down go to the top or bottom of a column; Control Home goes to A1.</li>
+        <li>Type a square to jump to it: a letter for the row, then the column number, like C 7 or J 1 4.</li>
+        <li>Enter or Space places a ship or fires.</li>
+        <li>During setup, R rotates between horizontal and vertical. Horizontal ships extend to the right, vertical ships extend down. Choosing a placed ship picks it back up.</li>
+        <li>During battle, S reads fleet status and L repeats the last message.</li>
+        <li>You can also type a square in the Fire at box and press Enter.</li>
+      </ul>
+      <p>Fleet: aircraft carrier (5), battleship (4), light missile cruiser (3), fast attack sub (3), special operations craft (2).</p>
+    </details>
+  </main>
+
+  <script src="js/engine.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
