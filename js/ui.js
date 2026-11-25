@@ -12,20 +12,37 @@
     setTimeout(() => { live.textContent = text; }, 60);
   }
 
-  // ---------- Game state ----------
-  let phase = 'setup';            // 'setup' | 'battle' | 'over'
-  let player = new Board();
-  let enemy = new Board();
-  let ai = new ComputerAI();
+  // ---------- State ----------
+  let phase = 'setup';           // 'setup' | 'battle' | 'over'
+  let game = new Game(advancedChosen());
+  let ai = null;
   let horizontal = true;
-  let currentShipId = FLEET[0].id;
+  let current = FLEET[0].id;     // what's being placed: a ship id, 'sq1', 'sq2', or null when done
+  let weapon = 'shot';
+  let searchPattern = 'x';       // for squadrons
+  let lineDir = 'h';             // for harpoons and torpedoes
 
+  const me = () => game.sides[0];
+  const foe = () => game.sides[1];
+  function advancedChosen() { return $('mode-advanced').checked; }
   function shipDef(id) { return FLEET.find(d => d.id === id); }
-  function firstUnplaced() {
-    const d = FLEET.find(d => !player.ships[d.id]);
-    return d ? d.id : null;
-  }
   function orientationWord() { return horizontal ? 'horizontal' : 'vertical'; }
+  function capital(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function listWords(items) {
+    if (items.length <= 1) return items.join('');
+    return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
+  }
+  const cellList = cells => listWords(cells.map(([r, c]) => coord(r, c)));
+
+  function nextToPlace() {
+    const d = FLEET.find(d => !me().board.ships[d.id]);
+    if (d) return d.id;
+    if (game.advanced) {
+      const sq = me().squadrons.find(s => !s.cell);
+      if (sq) return 'sq' + sq.n;
+    }
+    return null;
+  }
 
   // ---------- Accessible grid ----------
   function makeGrid(el, opts) {
@@ -80,7 +97,7 @@
       cells[r][c].focus();
     }
 
-    // Type a coordinate to jump: a letter picks the row, then 1 or 2 digits pick the column.
+    // Type a square to jump: a letter picks the row, then 1 or 2 digits pick the column.
     let digitBuf = '', digitTime = 0;
 
     el.addEventListener('keydown', e => {
@@ -96,7 +113,7 @@
       else if (k === 'PageUp') focusCell(0, cur.c);
       else if (k === 'PageDown') focusCell(NUM_ROWS - 1, cur.c);
       else if (k === 'Enter' || k === ' ') opts.onActivate(cur.r, cur.c);
-      else if (!e.ctrlKey && /^[a-j]$/i.test(k)) {
+      else if (!e.ctrlKey && /^[a-j]$/.test(k)) {
         digitBuf = '';
         focusCell(ROWS.indexOf(k.toUpperCase()), cur.c);
       } else if (!e.ctrlKey && /^[0-9]$/.test(k)) {
@@ -111,7 +128,7 @@
           if (one >= 1) focusCell(cur.r, one - 1);
         }
         digitTime = now;
-      } else if (!e.ctrlKey && opts.onKey) handled = opts.onKey(k, cur.r, cur.c);
+      } else if (!e.ctrlKey && opts.onKey) handled = opts.onKey(k);
       else handled = false;
       if (handled) e.preventDefault();
     });
@@ -141,12 +158,15 @@
 
   // ---------- Cell descriptions ----------
   function playerView(r, c) {
-    const cell = player.cells[r][c];
+    const s = me();
+    const cell = s.board.cells[r][c];
     const pos = coord(r, c);
     if (cell.ship) {
       const name = shipDef(cell.ship).name;
-      if (player.isSunk(cell.ship)) return { label: `${pos}, ${name}, sunk`, cls: 'ship sunk', mark: '✕' };
+      if (s.board.isSunk(cell.ship)) return { label: `${pos}, ${name}, sunk`, cls: 'ship sunk', mark: '✕' };
       if (cell.shot) return { label: `${pos}, ${name}, hit`, cls: 'ship hit', mark: '✕' };
+      const sq = game.advanced && s.squadronOnDeckAt(r, c);
+      if (sq) return { label: `${pos}, ${name}, attack squadron ${sq.n}`, cls: 'ship', mark: String(sq.n) };
       return { label: `${pos}, ${name}`, cls: 'ship', mark: '' };
     }
     if (cell.shot) return { label: `${pos}, miss`, cls: 'miss', mark: '•' };
@@ -154,82 +174,129 @@
   }
 
   function enemyView(r, c) {
-    const cell = enemy.cells[r][c];
+    const s = foe();
+    const cell = s.board.cells[r][c];
     const pos = coord(r, c);
+    const overhead = me().squadrons.filter(q => q.status === 'airborne' && sameCell(q.pos, [r, c]));
+    const sqText = overhead.length ? `, your squadron ${overhead.map(q => q.n).join(' and ')} overhead` : '';
+    let v;
     if (cell.shot && cell.ship) {
-      if (enemy.isSunk(cell.ship)) {
-        return { label: `${pos}, ${shipDef(cell.ship).name}, sunk`, cls: 'hit sunk', mark: '✕' };
-      }
-      return { label: `${pos}, hit`, cls: 'hit', mark: '✕' };
+      v = s.board.isSunk(cell.ship)
+        ? { label: `${pos}, ${shipDef(cell.ship).name}, sunk`, cls: 'hit sunk', mark: '✕' }
+        : { label: `${pos}, hit`, cls: 'hit', mark: '✕' };
+    } else if (cell.shot) {
+      v = { label: `${pos}, miss`, cls: 'miss', mark: '•' };
+    } else if (phase === 'over' && cell.ship) {
+      v = { label: `${pos}, ${shipDef(cell.ship).name}`, cls: 'ship', mark: '' };
+    } else if (me().knowledge[r][c] === 'spotted') {
+      v = { label: `${pos}, ship spotted`, cls: 'spotted', mark: '?' };
+    } else if (me().knowledge[r][c] === 'clear') {
+      v = { label: `${pos}, clear`, cls: 'clear', mark: '' };
+    } else {
+      v = { label: pos, cls: '', mark: '' };
     }
-    if (cell.shot) return { label: `${pos}, miss`, cls: 'miss', mark: '•' };
-    if (phase === 'over' && cell.ship) {
-      return { label: `${pos}, ${shipDef(cell.ship).name}`, cls: 'ship', mark: '' };
+    if (overhead.length) {
+      v.label += sqText;
+      v.cls += ' overhead';
+      if (!v.mark) v.mark = '✈';
     }
-    return { label: pos, cls: '', mark: '' };
+    return v;
   }
 
   // ---------- Grids ----------
   const playerGrid = makeGrid($('player-grid'), {
     label: 'Your fleet',
     view: playerView,
-    onActivate: (r, c) => { if (phase === 'setup') placeAt(r, c); },
-    onKey: (k, r, c) => {
+    onActivate: (r, c) => {
+      if (phase === 'setup') placeAt(r, c);
+      else if (phase === 'battle' && weapon === 'aa' && !game.pendingStrike) doAction({ type: 'aa', r, c });
+    },
+    onKey: k => {
       if (phase === 'setup' && (k === 'r' || k === 'R')) { rotate(); return true; }
-      return commonKey(k);
+      return battleKey(k);
     },
   });
 
   const enemyGrid = makeGrid($('enemy-grid'), {
     label: 'Enemy waters',
     view: enemyView,
-    onActivate: (r, c) => fireAt(r, c),
-    onKey: k => commonKey(k),
+    onActivate: (r, c) => enemyActivate(r, c),
+    onKey: k => battleKey(k),
   });
 
-  function commonKey(k) {
+  function battleKey(k) {
     if (k === 'l' || k === 'L') { if (lastMessage) announce(lastMessage); return true; }
-    if ((k === 's' || k === 'S') && phase !== 'setup') { announce(fleetReport()); return true; }
+    if (phase !== 'battle') return false;
+    if (k === 's' || k === 'S') { announce(fleetReport()); return true; }
+    if (!game.advanced) return false;
+    if (k === 'w') { cycleWeapon(1); return true; }
+    if (k === 'W') { cycleWeapon(-1); return true; }
+    if (k === 'r' || k === 'R') { togglePattern(); return true; }
+    if (k === 'Escape' && game.pendingStrike) { doAction({ type: 'skipStrike' }); return true; }
     return false;
   }
 
   // ---------- Setup ----------
   function placingText() {
-    if (!currentShipId) return 'All ships placed. Start the battle when ready.';
-    const d = shipDef(currentShipId);
+    if (!current) return 'All set. Start the battle when ready.';
+    if (current.startsWith('sq')) return `Place attack squadron ${current[2]} on a carrier square.`;
+    const d = shipDef(current);
     return `Placing ${d.name}, ${d.size} spaces, ${orientationWord()}.`;
   }
 
   function updateSetup() {
     $('placing').textContent = placingText();
     $('rotate').textContent = `Rotate (now ${orientationWord()})`;
-    $('start').disabled = !player.allPlaced();
+    $('start').disabled = !me().ready();
     playerGrid.refresh();
   }
 
   function placeAt(r, c) {
-    const there = player.cells[r][c].ship;
-    if (there) {
-      player.remove(there);
-      currentShipId = there;
+    const s = me();
+    const there = s.board.cells[r][c].ship;
+
+    // Placing a squadron on the carrier.
+    if (current && current.startsWith('sq') && there === 'carrier') {
+      const n = +current[2];
+      if (!s.placeSquadron(n, r, c)) { announce(`Attack squadron ${3 - n} is already at ${coord(r, c)}.`); return; }
+      current = nextToPlace();
       updateSetup();
-      announce(`Picked up ${shipDef(there).name}. ${placingText()}`);
+      announce(`Attack squadron ${n} on the carrier at ${coord(r, c)}. ${current ? placingText() : 'All set. Start the battle when ready.'}`);
       return;
     }
-    if (!currentShipId) { announce(placingText()); return; }
-    const d = shipDef(currentShipId);
-    if (!player.place(d, r, c, horizontal)) {
+    // Everything placed: choosing a squadron's square picks the squadron back up.
+    if (!current && there === 'carrier' && game.advanced) {
+      const sq = s.squadrons.find(q => sameCell(q.cell, [r, c]));
+      if (sq) {
+        sq.cell = null;
+        current = 'sq' + sq.n;
+        updateSetup();
+        announce(`Picked up attack squadron ${sq.n}. ${placingText()}`);
+        return;
+      }
+    }
+    // Choosing a ship picks it up.
+    if (there) {
+      if (there === 'carrier') s.clearSquadrons();
+      s.board.remove(there);
+      current = there;
+      updateSetup();
+      const extra = there === 'carrier' && game.advanced ? ' Its squadrons come off too.' : '';
+      announce(`Picked up ${shipDef(there).name}.${extra} ${placingText()}`);
+      return;
+    }
+    if (!current) { announce(placingText()); return; }
+    if (current.startsWith('sq')) { announce('Squadrons go on a carrier square.'); return; }
+
+    const d = shipDef(current);
+    if (!s.board.place(d, r, c, horizontal)) {
       announce(`The ${d.name} doesn't fit ${orientationWord()}ly from ${coord(r, c)}.`);
       return;
     }
-    const cells = player.ships[d.id].cells;
-    const from = coord(...cells[0]), to = coord(...cells[cells.length - 1]);
-    currentShipId = firstUnplaced();
+    const cells = s.board.ships[d.id].cells;
+    current = nextToPlace();
     updateSetup();
-    const next = currentShipId
-      ? `Next, ${shipDef(currentShipId).name}, ${shipDef(currentShipId).size} spaces.`
-      : 'All ships placed. Start the battle when ready.';
-    announce(`${capital(d.name)} placed, ${from} to ${to}. ${next}`);
+    announce(`${capital(d.name)} placed, ${coord(...cells[0])} to ${coord(...cells[cells.length - 1])}. ${placingText()}`);
   }
 
   function rotate() {
@@ -238,71 +305,169 @@
     announce(capital(orientationWord()) + '.');
   }
 
+  function fleetLayout() {
+    const s = me();
+    let text = FLEET.map(d => {
+      const cells = s.board.ships[d.id].cells;
+      return `${d.name} ${coord(...cells[0])} to ${coord(...cells[cells.length - 1])}`;
+    }).join(', ') + '.';
+    if (game.advanced) text += ` Squadrons at ${cellList(s.squadrons.map(q => q.cell))}.`;
+    return text;
+  }
+
   $('rotate').addEventListener('click', rotate);
   $('random').addEventListener('click', () => {
-    player.randomize();
-    currentShipId = null;
+    me().board.randomize();
+    if (game.advanced) me().randomSquadrons();
+    current = null;
     updateSetup();
     announce('Fleet placed randomly. ' + fleetLayout());
   });
   $('clear').addEventListener('click', () => {
-    player.clear();
-    currentShipId = FLEET[0].id;
+    me().board.clear();
+    me().clearSquadrons();
+    current = nextToPlace();
     updateSetup();
     announce('Grid cleared. ' + placingText());
   });
+  for (const id of ['mode-basic', 'mode-advanced']) {
+    $(id).addEventListener('change', () => {
+      game.setAdvanced(advancedChosen());
+      if (game.advanced && me().board.allPlaced() && !me().squadronsPlaced()) me().randomSquadrons();
+      current = nextToPlace();
+      updateSetup();
+    });
+  }
   $('start').addEventListener('click', startBattle);
 
-  function fleetLayout() {
-    return FLEET.map(d => {
-      const cells = player.ships[d.id].cells;
-      return `${d.name} ${coord(...cells[0])} to ${coord(...cells[cells.length - 1])}`;
-    }).join(', ') + '.';
+  // ---------- Weapons ----------
+  function weaponOptions() {
+    const s = me();
+    const out = [{ id: 'shot', label: 'Standard shot' }];
+    if (!game.advanced) return out;
+    for (const q of s.squadrons) {
+      if (s.can('sq' + q.n)) out.push({ id: 'sq' + q.n, label: `Attack squadron ${q.n}, ${q.status === 'airborne' ? 'airborne' : 'on carrier'}` });
+    }
+    if (s.can('tomahawk')) out.push({ id: 'tomahawk', label: 'Tomahawk, 1 left' });
+    if (s.can('harpoon')) out.push({ id: 'harpoon', label: `Harpoon, ${s.ammo.harpoon} left` });
+    if (s.can('torpedo')) out.push({ id: 'torpedo', label: `Torpedo, ${s.ammo.torpedo} left` });
+    if (s.can('sonar')) out.push({ id: 'sonar', label: 'Sonar' });
+    out.push({ id: 'aa', label: 'Antiaircraft battery' });
+    return out;
   }
+
+  function patternOptions() {
+    if (weapon === 'sq1' || weapon === 'sq2') return { label: 'Search pattern', value: searchPattern, opts: [['x', 'X pattern'], ['plus', 'Plus pattern']] };
+    if (weapon === 'harpoon' || weapon === 'torpedo') return { label: 'Direction', value: lineDir, opts: [['h', 'Horizontal'], ['v', 'Vertical']] };
+    return null;
+  }
+
+  function patternWord() {
+    const p = patternOptions();
+    return p ? p.opts.find(o => o[0] === p.value)[1] : '';
+  }
+
+  function updateWeapons() {
+    const opts = weaponOptions();
+    if (!opts.some(o => o.id === weapon)) weapon = 'shot';
+    const sel = $('weapon');
+    sel.innerHTML = '';
+    for (const o of opts) sel.appendChild(new Option(o.label, o.id, false, o.id === weapon));
+    const p = patternOptions();
+    $('pattern-wrap').hidden = !p;
+    if (p) {
+      $('pattern-label').textContent = p.label;
+      const ps = $('pattern');
+      ps.innerHTML = '';
+      for (const [v, t] of p.opts) ps.appendChild(new Option(t, v, false, v === p.value));
+    }
+    $('skip-strike').hidden = !(game.pendingStrike && game.pendingStrike.side === 0);
+  }
+
+  function weaponLabel() {
+    const o = weaponOptions().find(o => o.id === weapon);
+    const p = patternOptions();
+    return o.label + (p ? `, ${patternWord()}` : '') + '.';
+  }
+
+  function cycleWeapon(step) {
+    const opts = weaponOptions();
+    const i = opts.findIndex(o => o.id === weapon);
+    weapon = opts[(i + step + opts.length) % opts.length].id;
+    updateWeapons();
+    announce(weaponLabel());
+  }
+
+  function togglePattern() {
+    if (weapon === 'sq1' || weapon === 'sq2') searchPattern = searchPattern === 'x' ? 'plus' : 'x';
+    else if (weapon === 'harpoon' || weapon === 'torpedo') lineDir = lineDir === 'h' ? 'v' : 'h';
+    else { announce('This weapon has no pattern.'); return; }
+    updateWeapons();
+    announce(patternWord() + '.');
+  }
+
+  $('weapon').addEventListener('change', e => { weapon = e.target.value; updateWeapons(); });
+  $('pattern').addEventListener('change', e => {
+    if (weapon === 'sq1' || weapon === 'sq2') searchPattern = e.target.value;
+    else lineDir = e.target.value;
+  });
+  $('skip-strike').addEventListener('click', () => doAction({ type: 'skipStrike' }));
 
   // ---------- Battle ----------
   function startBattle() {
-    if (!player.allPlaced()) return;
-    enemy.randomize();
-    ai = new ComputerAI();
+    if (!me().ready()) return;
+    foe().board.randomize();
+    if (game.advanced) foe().randomSquadrons();
+    ai = new ComputerAI(game, 1);
     phase = 'battle';
+    weapon = 'shot';
     $('setup').hidden = true;
     $('enemy-section').hidden = false;
     $('fleet-status').hidden = false;
+    $('log-section').hidden = false;
     $('player-hint').hidden = true;
-    enemyGrid.refresh();
-    playerGrid.refresh();
-    updateFleetStatus();
+    $('weapon-controls').hidden = !game.advanced;
+    $('log').innerHTML = '';
+    refreshAll();
     enemyGrid.focusCell(0, 0);
-    announce('Battle stations. You fire first.');
+    announce(`Battle stations, ${game.advanced ? 'advanced' : 'basic'} weapons. You fire first.`);
   }
 
-  function fireAt(r, c) {
+  function enemyActivate(r, c) {
     if (phase !== 'battle') return;
-    const res = enemy.fire(r, c);
-    const pos = coord(r, c);
-    if (res.result === 'repeat') { announce(`Already fired at ${pos}.`); return; }
+    if (game.pendingStrike && game.pendingStrike.side === 0) { doAction({ type: 'strike', r, c }); return; }
+    switch (weapon) {
+      case 'shot': doAction({ type: 'shot', r, c }); break;
+      case 'sq1': case 'sq2': doAction({ type: 'search', n: +weapon[2], pattern: searchPattern, r, c }); break;
+      case 'tomahawk': doAction({ type: 'tomahawk', r, c }); break;
+      case 'harpoon': doAction({ type: 'harpoon', dir: lineDir, r, c }); break;
+      case 'torpedo': doAction({ type: 'torpedo', dir: lineDir, r, c }); break;
+      case 'sonar': doAction({ type: 'sonar', r, c }); break;
+      case 'aa': announce('The antiaircraft battery fires over your own waters. Choose a square on your fleet grid.'); break;
+    }
+  }
 
-    let msg;
-    if (res.result === 'miss') msg = `${pos}, miss.`;
-    else if (res.result === 'hit') msg = `${pos}, hit!`;
-    else msg = `${pos}, hit. You sank their ${res.ship.def.name}!`;
+  function doAction(a) {
+    if (phase !== 'battle') return;
+    const ev = game.act(0, a);
+    if (ev.error) { announce(ev.error); return; }
+    ai.observe(ev);
+    let msg = describe(ev, true);
+    addLog(msg);
 
-    if (enemy.allSunk()) { endGame(true, msg); return; }
+    if (game.pendingStrike && game.pendingStrike.side === 0) {
+      refreshAll();
+      announce(`${msg} Squadron ${ev.n} can strike one spotted square, or press Escape to skip.`);
+      return;
+    }
+    if (game.winner === 0) { endGame(true, msg); return; }
 
-    const shot = ai.nextShot();
-    const back = player.fire(shot.r, shot.c);
-    ai.report(shot.r, shot.c, back);
-    const bpos = coord(shot.r, shot.c);
-    if (back.result === 'miss') msg += ` Computer fires at ${bpos}, miss.`;
-    else if (back.result === 'hit') msg += ` Computer fires at ${bpos}, hits your ${back.ship.def.name}.`;
-    else msg += ` Computer fires at ${bpos} and sinks your ${back.ship.def.name}!`;
+    const reply = ai.takeTurn().map(e => describe(e, false)).join(' ');
+    addLog(reply);
+    msg += ' ' + reply;
+    if (game.winner === 1) { endGame(false, msg); return; }
 
-    if (player.allSunk()) { endGame(false, msg); return; }
-
-    enemyGrid.refresh();
-    playerGrid.refresh();
-    updateFleetStatus();
+    refreshAll();
     announce(msg);
   }
 
@@ -312,9 +477,113 @@
     const p = parseCoord(input.value);
     if (!p) { announce('Type a square from A1 to J14, like C7.'); return; }
     input.value = '';
-    fireAt(p.r, p.c);
+    if (weapon === 'aa' && !game.pendingStrike) doAction({ type: 'aa', r: p.r, c: p.c });
+    else enemyActivate(p.r, p.c);
   });
 
+  // ---------- Words for what happened ----------
+  function damageText(results, mine) {
+    const hits = results.filter(x => x.result === 'hit' || x.result === 'sunk');
+    const parts = [];
+    if (mine) {
+      parts.push(hits.length ? `hit${hits.length > 1 ? 's' : ''} at ${cellList(hits.map(x => [x.r, x.c]))}.` : 'no hits.');
+      for (const x of hits) if (x.result === 'sunk') parts.push(`You sank their ${x.ship.def.name}!`);
+      for (const x of results) if (x.squadronLost) parts.push(`Enemy attack squadron ${x.squadronLost} destroyed on their carrier.`);
+    } else {
+      if (!hits.length) parts.push('no damage.');
+      else {
+        const byShip = {};
+        for (const x of hits) (byShip[x.ship.def.name] = byShip[x.ship.def.name] || []).push([x.r, x.c]);
+        parts.push('hits your ' + listWords(Object.entries(byShip).map(([n, cells]) => `${n} at ${cellList(cells)}`)) + '.');
+      }
+      for (const x of hits) if (x.result === 'sunk') parts.push(`Your ${x.ship.def.name} is sunk!`);
+      for (const x of results) if (x.squadronLost) parts.push(`Your attack squadron ${x.squadronLost} was destroyed on the carrier.`);
+    }
+    return parts.join(' ');
+  }
+
+  function shotText(x, mine) {
+    const pos = coord(x.r, x.c);
+    let t;
+    if (mine) {
+      t = x.result === 'miss' ? `${pos}, miss.` : x.result === 'hit' ? `${pos}, hit!` : `${pos}, hit. You sank their ${x.ship.def.name}!`;
+      if (x.squadronLost) t += ` Enemy attack squadron ${x.squadronLost} destroyed on their carrier.`;
+    } else {
+      t = x.result === 'miss' ? `Computer fires at ${pos}, miss.`
+        : x.result === 'hit' ? `Computer fires at ${pos}, hits your ${x.ship.def.name}.`
+        : `Computer fires at ${pos} and sinks your ${x.ship.def.name}!`;
+      if (x.squadronLost) t += ` Your attack squadron ${x.squadronLost} was destroyed on the carrier.`;
+    }
+    return t;
+  }
+
+  function describe(ev, mine) {
+    const pos = ev.r !== undefined ? coord(ev.r, ev.c) : '';
+    const pat = p => (p === 'x' ? 'an X' : 'a plus');
+    const dirWord = d => (d === 'h' ? 'horizontal' : 'vertical');
+    switch (ev.type) {
+      case 'shot':
+        return shotText(ev.results[0], mine);
+      case 'search': {
+        if (mine) {
+          const verb = ev.launched ? 'launches and searches' : 'searches';
+          return `Squadron ${ev.n} ${verb} ${pat(ev.pattern)} pattern at ${pos}: ` +
+            (ev.spotted.length ? `ships spotted at ${cellList(ev.spotted)}.` : 'no ships.');
+        }
+        if (!ev.spotted.length) return `Enemy attack squadron ${ev.n} searches in ${pat(ev.pattern)} pattern and finds nothing.`;
+        const byShip = {};
+        for (const [r, c] of ev.spotted) {
+          const n = shipDef(me().board.cells[r][c].ship).name;
+          (byShip[n] = byShip[n] || []).push([r, c]);
+        }
+        return `Enemy attack squadron ${ev.n} searches in ${pat(ev.pattern)} pattern and spots your ` +
+          listWords(Object.entries(byShip).map(([n, cells]) => `${n} at ${cellList(cells)}`)) + '.';
+      }
+      case 'strike': {
+        const x = ev.results[0];
+        if (mine) {
+          let t = `Squadron ${ev.n} strikes ${pos}: ` +
+            (x.result === 'miss' ? 'miss.' : x.result === 'hit' ? 'hit!' : `hit. You sank their ${x.ship.def.name}!`);
+          if (x.squadronLost) t += ` Enemy attack squadron ${x.squadronLost} destroyed on their carrier.`;
+          return t;
+        }
+        return `It strikes ${pos}: ` + (x.result === 'miss' ? 'miss.' : damageText(ev.results, false));
+      }
+      case 'skipStrike':
+        return `Squadron ${ev.n} passes on its strike.`;
+      case 'tomahawk':
+        return (mine ? `Tomahawk around ${pos}: ` : `Enemy Tomahawk strikes around ${pos}: `) + damageText(ev.results, mine);
+      case 'harpoon':
+        return (mine ? `Harpoon, ${dirWord(ev.dir)}, at ${pos}: ` : `Enemy harpoon, ${dirWord(ev.dir)}, at ${pos}: `) + damageText(ev.results, mine);
+      case 'torpedo': {
+        const lane = ev.dir === 'h' ? `row ${ROWS[ev.r]}` : `column ${ev.c + 1}`;
+        const head = mine ? `Torpedo from ${coord(...ev.start)} along ${lane}: ` : `Enemy torpedo along ${lane}: `;
+        if (!ev.contact) return head + (mine ? 'no contact.' : 'no damage.');
+        if (ev.alreadyDamaged) {
+          return head + (mine ? `struck an already damaged section at ${coord(...ev.contact)}.`
+            : `struck your already damaged ${shipDef(me().board.cells[ev.contact[0]][ev.contact[1]].ship).name} at ${coord(...ev.contact)}.`);
+        }
+        return head + damageText(ev.results, mine);
+      }
+      case 'sonar':
+        return mine ? `Sonar at ${pos}: ${ev.detected ? 'enemy ship detected' : 'confirmed clear waters'}.` : 'The enemy sub uses sonar.';
+      case 'aa':
+        if (mine) return `Antiaircraft fire at ${pos}: ` + (ev.downed.length ? `shot down enemy attack squadron ${listWords(ev.downed.map(String))}!` : 'miss.');
+        return `Enemy antiaircraft fire at ${pos}: ` + (ev.downed.length ? `shot down your attack squadron ${listWords(ev.downed.map(String))}!` : 'miss.');
+      default:
+        return '';
+    }
+  }
+
+  function addLog(text) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    const log = $('log');
+    log.insertBefore(li, log.firstChild);
+    while (log.children.length > 40) log.removeChild(log.lastChild);
+  }
+
+  // ---------- Status ----------
   function shipStatus(board, d, revealDamage) {
     if (board.isSunk(d.id)) return `${d.name}, sunk`;
     const s = board.ships[d.id];
@@ -322,65 +591,90 @@
     return `${d.name}, afloat`;
   }
 
-  function fleetReport() {
-    const enemyLeft = FLEET.filter(d => !enemy.isSunk(d.id));
-    const mineLeft = FLEET.filter(d => !player.isSunk(d.id));
-    const enemyPart = enemyLeft.length
-      ? `Enemy afloat: ${enemyLeft.map(d => d.name).join(', ')}.`
-      : 'Enemy fleet destroyed.';
-    const damaged = mineLeft.filter(d => player.ships[d.id].hits > 0)
-      .map(d => `${d.name} ${player.ships[d.id].hits} of ${d.size} hit`);
-    const lost = FLEET.filter(d => player.isSunk(d.id)).map(d => d.name);
-    let minePart;
-    if (!mineLeft.length) minePart = 'Your fleet is destroyed.';
-    else {
-      minePart = `You have ${mineLeft.length} of 5 ships afloat.`;
-      if (damaged.length) minePart += ` Damaged: ${damaged.join('; ')}.`;
-      if (lost.length) minePart += ` Lost: ${lost.join('; ')}.`;
+  function weaponsText() {
+    const s = me();
+    const parts = [];
+    for (const q of s.squadrons) {
+      if (q.status === 'destroyed') parts.push(`squadron ${q.n} lost`);
+      else if (q.status === 'airborne') parts.push(`squadron ${q.n} over ${coord(...q.pos)}${q.struck ? '' : ', strike ready'}`);
+      else parts.push(`squadron ${q.n} on carrier`);
     }
-    return `${enemyPart} ${minePart}`;
+    if (s.can('tomahawk')) parts.push('Tomahawk ready');
+    if (s.can('harpoon')) parts.push(`${s.ammo.harpoon} harpoon${s.ammo.harpoon > 1 ? 's' : ''}`);
+    if (s.can('torpedo')) parts.push(`${s.ammo.torpedo} torpedo${s.ammo.torpedo > 1 ? 'es' : ''}`);
+    if (s.can('sonar')) parts.push('sonar');
+    return parts;
+  }
+
+  function fleetReport() {
+    const enemyLeft = FLEET.filter(d => !foe().board.isSunk(d.id));
+    const mine = me().board;
+    const mineLeft = FLEET.filter(d => !mine.isSunk(d.id));
+    let text = enemyLeft.length ? `Enemy afloat: ${enemyLeft.map(d => d.name).join(', ')}.` : 'Enemy fleet destroyed.';
+    if (game.advanced) {
+      const downed = foe().squadrons.filter(q => q.status === 'destroyed').map(q => q.n);
+      if (downed.length) text += ` Enemy squadrons lost: ${listWords(downed.map(String))}.`;
+    }
+    if (!mineLeft.length) return text + ' Your fleet is destroyed.';
+    text += ` You have ${mineLeft.length} of 5 ships afloat.`;
+    const damaged = mineLeft.filter(d => mine.ships[d.id].hits > 0).map(d => `${d.name} ${mine.ships[d.id].hits} of ${d.size} hit`);
+    const lost = FLEET.filter(d => mine.isSunk(d.id)).map(d => d.name);
+    if (damaged.length) text += ` Damaged: ${damaged.join('; ')}.`;
+    if (lost.length) text += ` Lost: ${lost.join('; ')}.`;
+    if (game.advanced) text += ` Weapons: ${weaponsText().join('; ')}.`;
+    return text;
   }
 
   function updateFleetStatus() {
-    const fill = (id, board, reveal) => {
+    const fill = (id, items) => {
       const ul = $(id);
       ul.innerHTML = '';
-      for (const d of FLEET) {
+      for (const [text, sunk] of items) {
         const li = document.createElement('li');
-        li.textContent = shipStatus(board, d, reveal);
-        if (board.isSunk(d.id)) li.className = 'sunk';
+        li.textContent = text;
+        if (sunk) li.className = 'sunk';
         ul.appendChild(li);
       }
     };
-    fill('enemy-ships', enemy, false);
-    fill('player-ships', player, true);
+    fill('enemy-ships', FLEET.map(d => [shipStatus(foe().board, d, false), foe().board.isSunk(d.id)]));
+    fill('player-ships', FLEET.map(d => [shipStatus(me().board, d, true), me().board.isSunk(d.id)]));
+    $('weapons-wrap').hidden = !game.advanced;
+    if (game.advanced) fill('player-weapons', weaponsText().map(t => [t, false]));
+  }
+
+  function refreshAll() {
+    enemyGrid.refresh();
+    playerGrid.refresh();
+    updateFleetStatus();
+    updateWeapons();
   }
 
   function endGame(won, lastShot) {
     phase = 'over';
-    enemyGrid.refresh();
-    playerGrid.refresh();
-    updateFleetStatus();
-    const shots = enemy.shotsTaken();
+    refreshAll();
+    const shots = foe().board.shotsTaken();
+    const sank = FLEET.filter(d => foe().board.isSunk(d.id)).length;
     const summary = won
-      ? `Victory! You sank the entire enemy fleet in ${shots} shots.`
-      : `Defeat. The computer sank your whole fleet. You fired ${shots} shots and sank ${FLEET.filter(d => enemy.isSunk(d.id)).length} of 5 ships. Enemy ships are now shown on their grid.`;
+      ? `Victory! You sank the entire enemy fleet, hitting ${shots} squares.`
+      : `Defeat. The computer sank your whole fleet. You sank ${sank} of 5 ships. Enemy ships are now shown on their grid.`;
     lastMessage = `${lastShot} ${summary}`;
     $('over-text').textContent = lastMessage;
     $('over').hidden = false;
+    $('weapon-controls').hidden = true;
     $('over-text').focus();
   }
 
   $('new-game').addEventListener('click', () => {
-    player = new Board();
-    enemy = new Board();
-    ai = new ComputerAI();
+    game = new Game(advancedChosen());
+    ai = null;
     phase = 'setup';
     horizontal = true;
-    currentShipId = FLEET[0].id;
+    weapon = 'shot';
+    current = nextToPlace();
     $('over').hidden = true;
     $('enemy-section').hidden = true;
     $('fleet-status').hidden = true;
+    $('log-section').hidden = true;
     $('setup').hidden = false;
     $('player-hint').hidden = false;
     updateSetup();
@@ -388,8 +682,5 @@
     announce('New game. ' + placingText());
   });
 
-  function capital(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
   updateSetup();
-  $('placing').textContent = placingText();
 })();

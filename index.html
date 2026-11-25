@@ -14,6 +14,11 @@
 
     <section id="setup" aria-labelledby="setup-h">
       <h2 id="setup-h">Place your fleet</h2>
+      <fieldset class="controls">
+        <legend>Weapons</legend>
+        <label><input type="radio" name="mode" id="mode-basic" value="basic" checked> Basic weapons</label>
+        <label><input type="radio" name="mode" id="mode-advanced" value="advanced"> Advanced weapons</label>
+      </fieldset>
       <p id="placing"></p>
       <div class="controls">
         <button type="button" id="rotate">Rotate</button>
@@ -25,6 +30,15 @@
 
     <section id="enemy-section" aria-labelledby="enemy-h" hidden>
       <h2 id="enemy-h">Enemy waters</h2>
+      <div id="weapon-controls" class="controls" hidden>
+        <label for="weapon">Weapon</label>
+        <select id="weapon"></select>
+        <span id="pattern-wrap" hidden>
+          <label for="pattern" id="pattern-label">Pattern</label>
+          <select id="pattern"></select>
+        </span>
+        <button type="button" id="skip-strike" hidden>Skip strike</button>
+      </div>
       <div id="enemy-grid" class="grid"></div>
       <form id="fire-form" class="controls">
         <label for="fire-input">Fire at</label>
@@ -51,20 +65,41 @@
       <ul id="enemy-ships"></ul>
       <h3>Yours</h3>
       <ul id="player-ships"></ul>
+      <div id="weapons-wrap" hidden>
+        <h3>Your weapons</h3>
+        <ul id="player-weapons"></ul>
+      </div>
+    </section>
+
+    <section id="log-section" aria-labelledby="log-h" hidden>
+      <h2 id="log-h">Battle log, newest first</h2>
+      <ol id="log" reversed></ol>
     </section>
 
     <details>
       <summary>How to play</summary>
       <p>The grid has rows A to J from top to bottom and columns 1 to 14 from left to right. A1 is the top left corner and J14 is the bottom right.</p>
+      <h3>Keys</h3>
       <ul>
         <li>Arrow keys move around a grid. Home and End go to the start or end of a row; Page Up and Page Down go to the top or bottom of a column; Control Home goes to A1.</li>
         <li>Type a square to jump to it: a letter for the row, then the column number, like C 7 or J 1 4.</li>
         <li>Enter or Space places a ship or fires.</li>
         <li>During setup, R rotates between horizontal and vertical. Horizontal ships extend to the right, vertical ships extend down. Choosing a placed ship picks it back up.</li>
-        <li>During battle, S reads fleet status and L repeats the last message.</li>
-        <li>You can also type a square in the Fire at box and press Enter.</li>
+        <li>During battle, S reads fleet status and L repeats the last message. You can also type a square in the Fire at box and press Enter.</li>
+        <li>Advanced weapons: W picks the next weapon and Shift W the previous one. R switches the search pattern or direction. Escape skips a squadron strike.</li>
       </ul>
-      <p>Fleet: aircraft carrier (5), battleship (4), light missile cruiser (3), fast attack sub (3), special operations craft (2).</p>
+      <h3>Fleet</h3>
+      <p>Aircraft carrier (5), battleship (4), light missile cruiser (3), fast attack sub (3), special operations craft (2).</p>
+      <h3>Advanced weapons</h3>
+      <ul>
+        <li>Attack squadrons: two, placed on your carrier during setup. A squadron flies to any square on the enemy grid and searches in an X pattern (the square and its four diagonal neighbors) or a plus pattern (the square and the four beside it). You learn which searched squares hold a ship. The enemy learns the pattern and which of their ships were seen, but not where the squadron is. The first time a squadron spots an unhit ship square, it may strike one spotted square right away. A squadron still on the carrier is destroyed if that carrier square is hit.</li>
+        <li>Antiaircraft battery: fire at one square of your own grid. It hits only an enemy squadron flying there, which is destroyed. Never runs out.</li>
+        <li>Tomahawk (one, on the battleship): hits the chosen square and all eight around it.</li>
+        <li>Harpoons (two, on the light missile cruiser): hit three squares in a horizontal or vertical line centered on the chosen square.</li>
+        <li>Torpedoes (two, on the fast attack sub): horizontal torpedoes run along the chosen row from column 1; vertical torpedoes run down the chosen column from row A. A torpedo stops at the first ship that isn't sunk, passing over wrecks. Squares it passes are marked clear.</li>
+        <li>Sonar (on the fast attack sub, unlimited): scans the chosen square and the eight around it, and reports enemy ship detected or confirmed clear waters.</li>
+        <li>A ship's weapons are lost when it sinks. Every weapon use takes your turn.</li>
+      </ul>
     </details>
   </main>
 
