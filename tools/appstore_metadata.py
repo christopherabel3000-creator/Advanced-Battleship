@@ -104,6 +104,9 @@ def regions():
         data.append({"type": "territoryAvailabilities", "id": lid})
         inc.append({"type": "territoryAvailabilities", "id": lid, "attributes": {"available": t not in EXCLUDE},
                     "relationships": {"territory": {"data": {"type": "territories", "id": t}}}})
+    existing = requests.get(API + f"/v1/apps/{APP}/appAvailabilityV2", headers=S.headers, timeout=60)
+    if existing.status_code == 200 and existing.json().get("data"):
+        return "already set; change them in App Store Connect, Pricing and Availability"
     call("POST", "/v2/appAvailabilities", json={"data": {"type": "appAvailabilities", "attributes": {"availableInNewTerritories": False},
          "relationships": {"app": {"data": {"type": "apps", "id": APP}}, "territoryAvailabilities": {"data": data}}}, "included": inc})
     return f"{len(terr) - len(EXCLUDE & set(terr))} of {len(terr)} regions"
