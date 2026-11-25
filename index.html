@@ -17,6 +17,7 @@
     <div class="controls">
       <button type="button" id="repeat">Repeat last message</button>
       <button type="button" id="status-btn" hidden>Fleet status</button>
+      <button type="button" id="restart" hidden>Restart game</button>
     </div>
 
     <section id="online" aria-labelledby="online-h">
@@ -90,7 +91,7 @@
 
     <section id="player-section" aria-labelledby="player-h">
       <h2 id="player-h">Your fleet</h2>
-      <p id="player-hint" class="hint">Choose the top or left end of each ship on the grid.</p>
+      <p id="player-hint" class="hint">Choose both ends of a ship on the grid, or one square twice to place it in the Rotate direction. You can also type both ends, like D4 H4.</p>
       <div id="player-grid" class="grid"></div>
     </section>
 
@@ -124,8 +125,10 @@
       <ul>
         <li>Arrow keys move around a grid. Home and End go to the start or end of a row; Page Up and Page Down go to the top or bottom of a column; Control Home goes to A1.</li>
         <li>Type a square to jump to it: a letter for the row, then the column number, like C 7 or J 1 4.</li>
-        <li>Enter or Space places a ship or fires.</li>
+        <li>Enter or Space places a ship or fires. To place a ship, choose one end and then the other, like D4 and then H4; the length picks which ship goes there. Choosing the same square twice places the current ship from there in the Rotate direction. Escape clears a chosen end.</li>
+        <li>In the Place at box, type one square, or both ends of a ship such as D4 H4 or I8 I10.</li>
         <li>During setup, R rotates between horizontal and vertical. Horizontal ships extend to the right, vertical ships extend down. Choosing a placed ship picks it back up.</li>
+        <li>Against the computer, Restart game (pressed twice) goes back to setup with your fleet where it was.</li>
         <li>During battle, S reads fleet status and L repeats the last message. You can also type a square in the Fire at box and press Enter.</li>
         <li>On a phone, use the Place at and Fire at boxes, the Repeat last message and Fleet status buttons, and the Weapon menu instead of keys.</li>
         <li>Advanced weapons: W picks the next weapon and Shift W the previous one. R switches the search pattern or direction.</li>

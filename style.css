@@ -71,6 +71,7 @@ input { background: #fff; color: #111; }
 .cell.sunk { background: #6e1a10; color: #fff; }
 .cell.spotted { background: #8a6d1d; color: #fff; }
 .cell.clear { background: #1a4a6b; }
+.cell.pending { box-shadow: inset 0 0 0 3px #ffd23f; }
 .cell.overhead { box-shadow: inset 0 0 0 3px #9be37a; }
 .cell:focus { outline: 3px solid var(--focus); outline-offset: -3px; z-index: 1; }
 

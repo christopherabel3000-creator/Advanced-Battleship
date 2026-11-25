@@ -19,6 +19,7 @@
   let ai = null;
   let horizontal = true;
   let current = FLEET[0].id;     // what's being placed: a ship id, 'sq1', 'sq2', or null when done
+  let pendingStart = null;       // first end of a ship chosen on the grid, waiting for the other end
   let weapon = 'shot';
   let searchPattern = 'x';       // for squadrons
   let lineDir = 'h';             // for harpoons and torpedoes
@@ -170,6 +171,11 @@
 
   // ---------- Cell descriptions ----------
   function playerView(r, c) {
+    const v = playerCellView(r, c);
+    if (phase === 'setup' && pendingStart && sameCell(pendingStart, [r, c])) { v.label += ', selected'; v.cls += ' pending'; }
+    return v;
+  }
+  function playerCellView(r, c) {
     const s = me();
     const cell = s.board.cells[r][c];
     const pos = coord(r, c);
@@ -220,11 +226,12 @@
     label: 'Your fleet',
     view: playerView,
     onActivate: (r, c) => {
-      if (phase === 'setup') placeAt(r, c);
+      if (phase === 'setup') gridPlace(r, c);
       else if (phase === 'battle' && weapon === 'aa' && !game.pendingStrike) doAction({ type: 'aa', r, c });
     },
     onKey: k => {
       if (phase === 'setup' && (k === 'r' || k === 'R')) { rotate(); return true; }
+      if (phase === 'setup' && k === 'Escape' && pendingStart) { pendingStart = null; playerGrid.refresh(); announce('Selection cleared.'); return true; }
       return battleKey(k);
     },
   });
@@ -263,6 +270,48 @@
     $('start').disabled = !me().ready() || locked;
     for (const id of ['rotate', 'random', 'clear']) $(id).disabled = locked;
     playerGrid.refresh();
+  }
+
+  // On the grid a ship can be placed by choosing both of its ends, or by choosing one square twice,
+  // which places the current ship from there in the Rotate direction.
+  function gridPlace(r, c) {
+    if (NET.on && NET.ready) { announce(LOCKED); return; }
+    const there = me().board.cells[r][c].ship;
+    if (pendingStart) {
+      const [a, b] = pendingStart;
+      pendingStart = null;
+      if (a === r && b === c) { placeAt(r, c); return; }
+      if (a === r || b === c) { placeSpan(a, b, r, c); return; }
+    }
+    if (there || !current || current.startsWith('sq')) { playerGrid.refresh(); placeAt(r, c); return; }
+    pendingStart = [r, c];
+    playerGrid.refresh();
+    announce(`${coord(r, c)} selected. Now the other end.`);
+  }
+
+  // Places a ship from one end to the other. The length picks the ship: the one being placed if it fits,
+  // otherwise the first unplaced ship of that length.
+  function placeSpan(r1, c1, r2, c2) {
+    if (NET.on && NET.ready) { announce(LOCKED); return; }
+    if (r1 !== r2 && c1 !== c2) { announce('A ship runs straight along a row or down a column.'); return; }
+    const s = me();
+    const len = Math.abs(r1 - r2) + Math.abs(c1 - c2) + 1;
+    const cur = current && !current.startsWith('sq') ? shipDef(current) : null;
+    const d = cur && cur.size === len ? cur : FLEET.find(x => x.size === len && !s.board.ships[x.id]);
+    if (!d) {
+      if (!FLEET.some(x => x.size === len)) announce(`No ship is ${len} spaces long. Ships are 5, 4, 3, 3 and 2 spaces.`);
+      else announce(`Every ${len}-space ship is already placed. Choose one on the grid to pick it up first.`);
+      return;
+    }
+    const from = coord(r1, c1), to = coord(r2, c2);
+    if (!s.board.place(d, Math.min(r1, r2), Math.min(c1, c2), r1 === r2)) {
+      announce(`The ${d.name} doesn't fit from ${from} to ${to}.`);
+      return;
+    }
+    const cells = s.board.ships[d.id].cells;
+    current = nextToPlace();
+    updateSetup();
+    announce(`${capital(d.name)} placed, ${coord(...cells[0])} to ${coord(...cells[cells.length - 1])}. ${placingText()}`);
   }
 
   function placeAt(r, c) {
@@ -316,6 +365,7 @@
 
   function rotate() {
     horizontal = !horizontal;
+    pendingStart = null;
     updateSetup();
     announce(capital(orientationWord()) + '.');
   }
@@ -332,6 +382,7 @@
 
   $('rotate').addEventListener('click', rotate);
   $('random').addEventListener('click', () => {
+    pendingStart = null;
     me().board.randomize();
     if (game.advanced) me().randomSquadrons();
     current = null;
@@ -339,6 +390,7 @@
     announce('Fleet placed randomly. ' + fleetLayout());
   });
   $('clear').addEventListener('click', () => {
+    pendingStart = null;
     me().board.clear();
     me().clearSquadrons();
     current = nextToPlace();
@@ -357,12 +409,16 @@
   $('place-form').addEventListener('submit', e => {
     e.preventDefault();
     const input = $('place-input');
-    const p = parseCoord(input.value);
-    if (!p) { announce('Type a square from A1 to J14, like C7.'); return; }
+    const parts = (input.value.match(/[a-z]\s*-?\s*\d{1,2}/gi) || []).map(parseCoord);
+    if (!parts.length || parts.length > 2 || parts.some(p => !p)) {
+      announce('Type one square, like C7, or both ends of a ship, like D4 H4.');
+      return;
+    }
     input.value = '';
-    placeAt(p.r, p.c);
-  });
-  $('repeat').addEventListener('click', () => announce(lastMessage || placingText(), false));
+    pendingStart = null;
+    if (parts.length === 2) placeSpan(parts[0].r, parts[0].c, parts[1].r, parts[1].c);
+    else placeAt(parts[0].r, parts[0].c);
+  });  $('repeat').addEventListener('click', () => announce(lastMessage || placingText(), false));
   $('status-btn').addEventListener('click', () => announce(fleetReport(), false));
 
   // ---------- Weapons ----------
@@ -683,6 +739,7 @@
 
   function refreshAll() {
     renderOnline();
+    $('restart').hidden = NET.on || phase !== 'battle';
     enemyGrid.refresh();
     playerGrid.refresh();
     updateFleetStatus();
@@ -704,6 +761,25 @@
     $('over-text').focus();
   }
 
+  // Single player: start over from setup, keeping your fleet where it is. Press twice to confirm.
+  let restartTimer = null;
+  $('restart').addEventListener('click', () => {
+    if (NET.on || phase !== 'battle') return;
+    const b = $('restart');
+    if (!restartTimer) {
+      b.textContent = 'Press again to restart';
+      announce('Press Restart game again within five seconds to abandon this game.', false);
+      restartTimer = setTimeout(() => { restartTimer = null; b.textContent = 'Restart game'; }, 5000);
+      return;
+    }
+    const keep = fleetData(me());
+    resetToSetup();
+    loadFleet(me(), keep);
+    current = nextToPlace();
+    updateSetup();
+    announce(`Game restarted. Your fleet is where you had it. ${current ? placingText() : 'Start the battle when ready, or move ships first.'}`);
+  });
+
   $('new-game').addEventListener('click', () => {
     if (NET.on) { leaveOnline(); return; }
     resetToSetup();
@@ -713,6 +789,8 @@
   // Back to a fresh setup against the computer (also used when leaving or entering an online game).
   function resetToSetup() {
     ME = 0;
+    pendingStart = null;
+    clearTimeout(restartTimer); restartTimer = null; $('restart').textContent = 'Restart game';
     game = new Game(advancedChosen(), plusOneChosen());
     ai = null;
     phase = 'setup';
