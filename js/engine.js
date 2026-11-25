@@ -244,8 +244,8 @@ class Game {
     const me = this.sides[i];
     const them = this.opp(i);
     const ps = this.pendingStrike;
-    if (ps && ps.side === i && a.type !== 'strike' && a.type !== 'skipStrike') {
-      return { error: `Choose a spotted square for squadron ${ps.n} to strike, or skip the strike.` };
+    if (ps && ps.side === i && a.type !== 'strike') {
+      return { error: `Squadron ${ps.n} must strike first. Choose ${ps.cells.length > 1 ? 'one of the spotted squares' : 'the spotted square'}: ${ps.cells.map(([r, c]) => coord(r, c)).join(', ')}.` };
     }
     const ev = { side: i, type: a.type, r: a.r, c: a.c, results: [] };
     const tb = them.board;
@@ -288,14 +288,6 @@ class Game {
         this.pendingStrike = null;
         ev.n = ps.n;
         ev.results.push(this.hit(1 - i, a.r, a.c));
-        break;
-      }
-
-      case 'skipStrike': {
-        if (!ps || ps.side !== i) return { error: 'No strike is ready.' };
-        me.squadrons[ps.n - 1].struck = true;
-        this.pendingStrike = null;
-        ev.n = ps.n;
         break;
       }
 

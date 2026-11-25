@@ -232,7 +232,6 @@
     if (k === 'w') { cycleWeapon(1); return true; }
     if (k === 'W') { cycleWeapon(-1); return true; }
     if (k === 'r' || k === 'R') { togglePattern(); return true; }
-    if (k === 'Escape' && game.pendingStrike) { doAction({ type: 'skipStrike' }); return true; }
     return false;
   }
 
@@ -381,7 +380,6 @@
       ps.innerHTML = '';
       for (const [v, t] of p.opts) ps.appendChild(new Option(t, v, false, v === p.value));
     }
-    $('skip-strike').hidden = !(game.pendingStrike && game.pendingStrike.side === 0);
   }
 
   function weaponLabel() {
@@ -411,7 +409,6 @@
     if (weapon === 'sq1' || weapon === 'sq2') searchPattern = e.target.value;
     else lineDir = e.target.value;
   });
-  $('skip-strike').addEventListener('click', () => doAction({ type: 'skipStrike' }));
 
   // ---------- Battle ----------
   function startBattle() {
@@ -457,7 +454,8 @@
 
     if (game.pendingStrike && game.pendingStrike.side === 0) {
       refreshAll();
-      announce(`${msg} Squadron ${ev.n} can strike one spotted square, or press Escape to skip.`);
+      const cells = game.pendingStrike.cells;
+      announce(`${msg} Squadron ${ev.n} strikes: choose ${cellList(cells).replace(/ and ([^ ]+)$/, ' or $1')}.`);
       return;
     }
     if (game.winner === 0) { endGame(true, msg); return; }
@@ -549,8 +547,6 @@
         }
         return `It strikes ${pos}: ` + (x.result === 'miss' ? 'miss.' : damageText(ev.results, false));
       }
-      case 'skipStrike':
-        return `Squadron ${ev.n} passes on its strike.`;
       case 'tomahawk':
         return (mine ? `Tomahawk around ${pos}: ` : `Enemy Tomahawk strikes around ${pos}: `) + damageText(ev.results, mine);
       case 'harpoon':

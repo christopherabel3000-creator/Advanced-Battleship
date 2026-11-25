@@ -23,7 +23,7 @@ Ships go horizontally (extending right) or vertically (extending down) and can't
 
 Choose **Basic weapons** for a normal game or **Advanced weapons** before the battle. With advanced weapons, both sides get:
 
-- **Attack squadrons (2, on the carrier):** fly anywhere on the enemy grid and search an X pattern (square plus four diagonals) or a plus pattern (square plus four beside it). The searcher learns which squares hold a ship; the defender learns the pattern and which of their ships were seen, but not the squadron's square. A squadron's first sighting of an unhit ship square lets it strike one spotted square immediately (or pass, which uses up the strike). A squadron still on deck dies if its carrier square is hit.
+- **Attack squadrons (2, on the carrier):** fly anywhere on the enemy grid and search an X pattern (square plus four diagonals) or a plus pattern (square plus four beside it). The searcher learns which squares hold a ship; the defender learns the pattern and which of their ships were seen, but not the squadron's square. A squadron's first sighting of an unhit ship square makes it strike one spotted square immediately (required). A squadron still on deck dies if its carrier square is hit.
 - **Antiaircraft battery:** fire at a square of your own grid; downs any enemy squadron flying there. Unlimited.
 - **Tomahawk (1, battleship):** hits the chosen square and the eight around it.
 - **Harpoons (2, cruiser):** three squares in a horizontal or vertical line centered on the chosen square.
@@ -39,7 +39,7 @@ A ship's weapons are lost when it sinks. Every action takes the turn.
 - Enter or Space places a ship or fires.
 - Setup: `R` rotates. Choosing a placed ship picks it back up.
 - Battle: `S` reads fleet status, `L` repeats the last message. There's also a "Fire at" box.
-- Advanced: `W` / `Shift+W` change weapon, `R` switches pattern or direction, `Escape` skips a squadron strike. The antiaircraft battery fires from your own fleet grid.
+- Advanced: `W` / `Shift+W` change weapon, `R` switches pattern or direction. The antiaircraft battery fires from your own fleet grid.
 
 ## Files
 
