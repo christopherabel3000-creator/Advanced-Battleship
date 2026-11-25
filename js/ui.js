@@ -14,7 +14,7 @@
 
   // ---------- State ----------
   let phase = 'setup';           // 'setup' | 'battle' | 'over'
-  let game = new Game(advancedChosen());
+  let game = new Game(advancedChosen(), plusOneChosen());
   let ai = null;
   let horizontal = true;
   let current = FLEET[0].id;     // what's being placed: a ship id, 'sq1', 'sq2', or null when done
@@ -25,6 +25,7 @@
   const me = () => game.sides[0];
   const foe = () => game.sides[1];
   function advancedChosen() { return $('mode-advanced').checked; }
+  function plusOneChosen() { return $('plus-one').checked; }
   function shipDef(id) { return FLEET.find(d => d.id === id); }
   function orientationWord() { return horizontal ? 'horizontal' : 'vertical'; }
   function capital(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -413,6 +414,7 @@
   // ---------- Battle ----------
   function startBattle() {
     if (!me().ready()) return;
+    game.plusOne = plusOneChosen();
     foe().board.randomize();
     if (game.advanced) foe().randomSquadrons();
     ai = new ComputerAI(game, 1);
@@ -427,7 +429,7 @@
     $('log').innerHTML = '';
     refreshAll();
     enemyGrid.focusCell(0, 0);
-    announce(`Battle stations, ${game.advanced ? 'advanced' : 'basic'} weapons. You fire first.`);
+    announce(`Battle stations, ${game.advanced ? 'advanced' : 'basic'} weapons${game.plusOne ? ', target plus 1' : ''}. You fire first.`);
   }
 
   function enemyActivate(r, c) {
@@ -459,6 +461,11 @@
       return;
     }
     if (game.winner === 0) { endGame(true, msg); return; }
+    if (ev.again) {
+      refreshAll();
+      announce(`${msg} Go again.`);
+      return;
+    }
 
     const reply = ai.takeTurn().map(e => describe(e, false)).join(' ');
     addLog(reply);
@@ -661,7 +668,7 @@
   }
 
   $('new-game').addEventListener('click', () => {
-    game = new Game(advancedChosen());
+    game = new Game(advancedChosen(), plusOneChosen());
     ai = null;
     phase = 'setup';
     horizontal = true;

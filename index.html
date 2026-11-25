@@ -19,6 +19,9 @@
         <label><input type="radio" name="mode" id="mode-basic" value="basic" checked> Basic weapons</label>
         <label><input type="radio" name="mode" id="mode-advanced" value="advanced"> Advanced weapons</label>
       </fieldset>
+      <div class="controls">
+        <label><input type="checkbox" id="plus-one"> Target plus 1 (a hit earns another turn)</label>
+      </div>
       <p id="placing"></p>
       <div class="controls">
         <button type="button" id="rotate">Rotate</button>
@@ -99,6 +102,8 @@
         <li>Sonar (on the fast attack sub, unlimited): scans the chosen square and the eight around it, and reports enemy ship detected or confirmed clear waters.</li>
         <li>A ship's weapons are lost when it sinks. Every weapon use takes your turn.</li>
       </ul>
+      <h3>Target plus 1</h3>
+      <p>An optional rule for either weapons mode. Any shot or weapon that damages a ship earns another turn, including a squadron's strike and a Tomahawk, harpoon or torpedo that hits anything. An antiaircraft hit on a squadron also earns another turn. Misses, searches that only observe, and sonar end your turn.</p>
     </details>
   </main>
 

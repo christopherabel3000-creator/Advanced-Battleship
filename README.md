@@ -32,6 +32,10 @@ Choose **Basic weapons** for a normal game or **Advanced weapons** before the ba
 
 A ship's weapons are lost when it sinks. Every action takes the turn.
 
+## Target plus 1
+
+An optional rule, chosen at setup, that works with either weapons mode. Any action that damages a ship (a shot, a squadron strike, or a Tomahawk, harpoon or torpedo that hits anything) or downs a squadron with antiaircraft fire earns another turn. Misses, observe-only searches, and sonar end the turn. A torpedo that runs into an already damaged section does no new damage, so it ends the turn.
+
 ## Keys
 
 - Arrow keys move around a grid; Home/End go along a row; Page Up/Page Down go along a column; Ctrl+Home goes to A1.

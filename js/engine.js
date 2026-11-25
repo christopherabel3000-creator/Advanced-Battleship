@@ -208,7 +208,8 @@ class Side {
 // act() takes one action and returns an event describing exactly what happened,
 // or { error } if the action isn't allowed.
 class Game {
-  constructor(advanced) {
+  constructor(advanced, plusOne = false) {
+    this.plusOne = plusOne;   // Target plus 1: a hit earns another turn
     this.sides = [new Side(advanced), new Side(advanced)];
     this.setAdvanced(advanced);
     this.pendingStrike = null; // { side, n, cells } after a squadron's first sighting
@@ -356,6 +357,11 @@ class Game {
 
     if (tb.allSunk()) this.winner = i;
     ev.winner = this.winner;
+    // Target plus 1: new damage to a ship, or downing a squadron, earns another turn.
+    // Searches and sonar never do; a search that spots a ship leads to its strike instead.
+    const hitSomething = ev.results.some(x => x.result === 'hit' || x.result === 'sunk') ||
+      (ev.type === 'aa' && ev.downed.length > 0);
+    ev.again = this.plusOne && hitSomething && this.winner === null;
     return ev;
   }
 }
@@ -513,16 +519,21 @@ class ComputerAI {
   // Plays the computer's whole turn and returns its events (a search may add a strike).
   takeTurn() {
     const events = [];
-    let ev = this.g.act(this.me, this.choose());
-    if (ev.error) ev = this.g.act(this.me, this.huntShot());
-    events.push(ev);
-    if (ev.type === 'sonar' && ev.detected) this.contacts.push([ev.r, ev.c]);
-    if (ev.type === 'aa' && ev.downed.length) ev.downed.forEach(n => { delete this.enemySq[n]; });
-    const ps = this.g.pendingStrike;
-    if (ps && ps.side === this.me) {
-      const [r, c] = pick(ps.cells);
-      events.push(this.g.act(this.me, { type: 'strike', r, c }));
-    }
+    let last;
+    do {
+      let ev = this.g.act(this.me, this.choose());
+      if (ev.error) ev = this.g.act(this.me, this.huntShot());
+      events.push(ev);
+      if (ev.type === 'sonar' && ev.detected) this.contacts.push([ev.r, ev.c]);
+      if (ev.type === 'aa' && ev.downed.length) ev.downed.forEach(n => { delete this.enemySq[n]; });
+      last = ev;
+      const ps = this.g.pendingStrike;
+      if (ps && ps.side === this.me) {
+        const [r, c] = pick(ps.cells);
+        last = this.g.act(this.me, { type: 'strike', r, c });
+        events.push(last);
+      }
+    } while (last.again && this.g.winner === null && events.length < 300);
     return events;
   }
 
