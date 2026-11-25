@@ -6,8 +6,9 @@
 
   const live = $('status');
   let lastMessage = '';
-  function announce(text) {
-    lastMessage = text;
+  // Status reports and weapon changes pass remember = false, so Repeat still gives the last move.
+  function announce(text, remember = true) {
+    if (remember) lastMessage = text;
     live.textContent = '';
     setTimeout(() => { live.textContent = text; }, 60);
   }
@@ -34,6 +35,11 @@
     return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
   }
   const cellList = cells => listWords(cells.map(([r, c]) => coord(r, c)));
+  // "aircraft carrier at A1 and A3, and your battleship at C1"
+  function shipGroups(byShip) {
+    const parts = Object.entries(byShip).map(([n, cells], i) => `${i ? 'your ' : ''}${n} at ${cellList(cells)}`);
+    return parts.length <= 1 ? parts.join('') : parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1];
+  }
 
   function nextToPlace() {
     const d = FLEET.find(d => !me().board.ships[d.id]);
@@ -226,9 +232,9 @@
   });
 
   function battleKey(k) {
-    if (k === 'l' || k === 'L') { if (lastMessage) announce(lastMessage); return true; }
+    if (k === 'l' || k === 'L') { if (lastMessage) announce(lastMessage, false); return true; }
     if (phase !== 'battle') return false;
-    if (k === 's' || k === 'S') { announce(fleetReport()); return true; }
+    if (k === 's' || k === 'S') { announce(fleetReport(), false); return true; }
     if (!game.advanced) return false;
     if (k === 'w') { cycleWeapon(1); return true; }
     if (k === 'W') { cycleWeapon(-1); return true; }
@@ -339,6 +345,16 @@
     });
   }
   $('start').addEventListener('click', startBattle);
+  $('place-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const input = $('place-input');
+    const p = parseCoord(input.value);
+    if (!p) { announce('Type a square from A1 to J14, like C7.'); return; }
+    input.value = '';
+    placeAt(p.r, p.c);
+  });
+  $('repeat').addEventListener('click', () => announce(lastMessage || placingText(), false));
+  $('status-btn').addEventListener('click', () => announce(fleetReport(), false));
 
   // ---------- Weapons ----------
   function weaponOptions() {
@@ -394,7 +410,7 @@
     const i = opts.findIndex(o => o.id === weapon);
     weapon = opts[(i + step + opts.length) % opts.length].id;
     updateWeapons();
-    announce(weaponLabel());
+    announce(weaponLabel(), false);
   }
 
   function togglePattern() {
@@ -402,7 +418,7 @@
     else if (weapon === 'harpoon' || weapon === 'torpedo') lineDir = lineDir === 'h' ? 'v' : 'h';
     else { announce('This weapon has no pattern.'); return; }
     updateWeapons();
-    announce(patternWord() + '.');
+    announce(patternWord() + '.', false);
   }
 
   $('weapon').addEventListener('change', e => { weapon = e.target.value; updateWeapons(); });
@@ -424,6 +440,7 @@
     $('enemy-section').hidden = false;
     $('fleet-status').hidden = false;
     $('log-section').hidden = false;
+    $('status-btn').hidden = false;
     $('player-hint').hidden = true;
     $('weapon-controls').hidden = !game.advanced;
     $('log').innerHTML = '';
@@ -499,7 +516,7 @@
       else {
         const byShip = {};
         for (const x of hits) (byShip[x.ship.def.name] = byShip[x.ship.def.name] || []).push([x.r, x.c]);
-        parts.push('hits your ' + listWords(Object.entries(byShip).map(([n, cells]) => `${n} at ${cellList(cells)}`)) + '.');
+        parts.push('hits your ' + shipGroups(byShip) + '.');
       }
       for (const x of hits) if (x.result === 'sunk') parts.push(`Your ${x.ship.def.name} is sunk!`);
       for (const x of results) if (x.squadronLost) parts.push(`Your attack squadron ${x.squadronLost} was destroyed on the carrier.`);
@@ -541,8 +558,7 @@
           const n = shipDef(me().board.cells[r][c].ship).name;
           (byShip[n] = byShip[n] || []).push([r, c]);
         }
-        return `Enemy attack squadron ${ev.n} searches in ${pat(ev.pattern)} pattern and spots your ` +
-          listWords(Object.entries(byShip).map(([n, cells]) => `${n} at ${cellList(cells)}`)) + '.';
+        return `Enemy attack squadron ${ev.n} searches in ${pat(ev.pattern)} pattern and spots your ${shipGroups(byShip)}.`;
       }
       case 'strike': {
         const x = ev.results[0];
@@ -678,6 +694,7 @@
     $('enemy-section').hidden = true;
     $('fleet-status').hidden = true;
     $('log-section').hidden = true;
+    $('status-btn').hidden = true;
     $('setup').hidden = false;
     $('player-hint').hidden = false;
     updateSetup();

@@ -11,6 +11,10 @@
     <h1>Advanced Battleship</h1>
 
     <p id="status" class="status" role="status" aria-live="polite"></p>
+    <div class="controls">
+      <button type="button" id="repeat">Repeat last message</button>
+      <button type="button" id="status-btn" hidden>Fleet status</button>
+    </div>
 
     <section id="setup" aria-labelledby="setup-h">
       <h2 id="setup-h">Place your fleet</h2>
@@ -29,6 +33,11 @@
         <button type="button" id="clear">Clear</button>
         <button type="button" id="start" disabled>Start battle</button>
       </div>
+      <form id="place-form" class="controls">
+        <label for="place-input">Place at</label>
+        <input id="place-input" type="text" autocomplete="off" autocapitalize="characters" size="5">
+        <button type="submit">Place</button>
+      </form>
     </section>
 
     <section id="enemy-section" aria-labelledby="enemy-h" hidden>
@@ -88,6 +97,7 @@
         <li>Enter or Space places a ship or fires.</li>
         <li>During setup, R rotates between horizontal and vertical. Horizontal ships extend to the right, vertical ships extend down. Choosing a placed ship picks it back up.</li>
         <li>During battle, S reads fleet status and L repeats the last message. You can also type a square in the Fire at box and press Enter.</li>
+        <li>On a phone, use the Place at and Fire at boxes, the Repeat last message and Fleet status buttons, and the Weapon menu instead of keys.</li>
         <li>Advanced weapons: W picks the next weapon and Shift W the previous one. R switches the search pattern or direction.</li>
       </ul>
       <h3>Fleet</h3>
