@@ -20,7 +20,9 @@ body {
   line-height: 1.4;
 }
 
-main { max-width: 44rem; margin: 0 auto; padding: 1rem; }
+main { max-width: 44rem; margin: 0 auto; padding: 1rem;
+  padding-top: max(1rem, env(safe-area-inset-top)); padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
 
 h1 { margin-top: 0; }
 
@@ -82,3 +84,10 @@ select { font: inherit; padding: 0.4rem; border-radius: 6px; }
 
 details { margin-top: 1.5rem; }
 summary { cursor: pointer; font-weight: 600; }
+
+.gamecode { font-weight: 700; letter-spacing: 0.2em; font-size: 1.2rem; }
+.link { word-break: break-all; }
+.err { color: #ffb4a8; font-weight: 600; }
+.err:empty { display: none; }
+footer { margin-top: 2rem; opacity: 0.9; }
+a { color: #9fd3ff; }

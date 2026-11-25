@@ -1,0 +1,10 @@
+{
+  "appId": "com.playbyear.salvocommand",
+  "appName": "Salvo Command",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#08243a",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

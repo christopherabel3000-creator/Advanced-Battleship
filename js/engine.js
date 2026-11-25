@@ -1,4 +1,4 @@
-// Advanced Battleship — game rules and computer opponent.
+// Salvo Command — game rules and computer opponent.
 // No screen or keyboard code lives here, so new tactics can be added
 // without touching the interface.
 'use strict';
@@ -214,6 +214,7 @@ class Game {
     this.setAdvanced(advanced);
     this.pendingStrike = null; // { side, n, cells } after a squadron's first sighting
     this.winner = null;
+    this.turn = 0;             // whose turn it is; side 0 always fires first
   }
 
   setAdvanced(v) {
@@ -242,6 +243,7 @@ class Game {
 
   act(i, a) {
     if (this.winner !== null) return { error: 'The game is over.' };
+    if (i !== this.turn) return { error: "It isn't your turn." };
     const me = this.sides[i];
     const them = this.opp(i);
     const ps = this.pendingStrike;
@@ -362,6 +364,9 @@ class Game {
     const hitSomething = ev.results.some(x => x.result === 'hit' || x.result === 'sunk') ||
       (ev.type === 'aa' && ev.downed.length > 0);
     ev.again = this.plusOne && hitSomething && this.winner === null;
+    // The turn passes unless a strike is waiting or Target plus 1 grants another go.
+    const strikeWaiting = this.pendingStrike && this.pendingStrike.side === i;
+    if (this.winner === null && !strikeWaiting && !ev.again) this.turn = 1 - i;
     return ev;
   }
 }

@@ -1,4 +1,4 @@
-// Advanced Battleship — screen, keyboard and announcements.
+// Salvo Command — screen, keyboard and announcements.
 'use strict';
 
 (function () {
@@ -23,8 +23,13 @@
   let searchPattern = 'x';       // for squadrons
   let lineDir = 'h';             // for harpoons and torpedoes
 
-  const me = () => game.sides[0];
-  const foe = () => game.sides[1];
+  // Online play state (see "Online play" near the end of this file).
+  const NET = { on: false, role: null, code: null, ref: null, db: null, st: null, busy: false, applied: 0, ready: false, connected: null, everConnected: false };
+  let ME = 0;                    // which side of the game is this player: 0, or 1 when joining an online game as guest
+  const me = () => game.sides[ME];
+  const foe = () => game.sides[1 - ME];
+  const myStrike = () => !!(game.pendingStrike && game.pendingStrike.side === ME);
+  const FOE = () => (NET.on ? 'Opponent' : 'Computer');
   function advancedChosen() { return $('mode-advanced').checked; }
   function plusOneChosen() { return $('plus-one').checked; }
   function shipDef(id) { return FLEET.find(d => d.id === id); }
@@ -251,13 +256,17 @@
   }
 
   function updateSetup() {
-    $('placing').textContent = placingText();
+    const locked = NET.on && NET.ready;
+    $('placing').textContent = locked ? LOCKED : placingText();
     $('rotate').textContent = `Rotate (now ${orientationWord()})`;
-    $('start').disabled = !me().ready();
+    $('start').textContent = NET.on ? "I'm ready" : 'Start battle';
+    $('start').disabled = !me().ready() || locked;
+    for (const id of ['rotate', 'random', 'clear']) $(id).disabled = locked;
     playerGrid.refresh();
   }
 
   function placeAt(r, c) {
+    if (NET.on && NET.ready) { announce(LOCKED); return; }
     const s = me();
     const there = s.board.cells[r][c].ship;
 
@@ -429,11 +438,18 @@
 
   // ---------- Battle ----------
   function startBattle() {
+    if (NET.on) { readyOnline(); return; }
     if (!me().ready()) return;
     game.plusOne = plusOneChosen();
     foe().board.randomize();
     if (game.advanced) foe().randomSquadrons();
     ai = new ComputerAI(game, 1);
+    showBattle();
+    announce(`Battle stations, ${game.advanced ? 'advanced' : 'basic'} weapons${game.plusOne ? ', target plus 1' : ''}. You fire first.`);
+  }
+
+  // Switches the screen from setup to the battle.
+  function showBattle() {
     phase = 'battle';
     weapon = 'shot';
     $('setup').hidden = true;
@@ -446,12 +462,11 @@
     $('log').innerHTML = '';
     refreshAll();
     enemyGrid.focusCell(0, 0);
-    announce(`Battle stations, ${game.advanced ? 'advanced' : 'basic'} weapons${game.plusOne ? ', target plus 1' : ''}. You fire first.`);
   }
 
   function enemyActivate(r, c) {
     if (phase !== 'battle') return;
-    if (game.pendingStrike && game.pendingStrike.side === 0) { doAction({ type: 'strike', r, c }); return; }
+    if (myStrike()) { doAction({ type: 'strike', r, c }); return; }
     switch (weapon) {
       case 'shot': doAction({ type: 'shot', r, c }); break;
       case 'sq1': case 'sq2': doAction({ type: 'search', n: +weapon[2], pattern: searchPattern, r, c }); break;
@@ -463,21 +478,26 @@
     }
   }
 
+  function strikePrompt() {
+    const ps = game.pendingStrike;
+    return `Squadron ${ps.n} strikes: choose ${cellList(ps.cells).replace(/ and ([^ ]+)$/, ' or $1')}.`;
+  }
+
   function doAction(a) {
     if (phase !== 'battle') return;
-    const ev = game.act(0, a);
+    if (NET.on) { sendOnline(a); return; }
+    const ev = game.act(ME, a);
     if (ev.error) { announce(ev.error); return; }
     ai.observe(ev);
     let msg = describe(ev, true);
     addLog(msg);
 
-    if (game.pendingStrike && game.pendingStrike.side === 0) {
+    if (myStrike()) {
       refreshAll();
-      const cells = game.pendingStrike.cells;
-      announce(`${msg} Squadron ${ev.n} strikes: choose ${cellList(cells).replace(/ and ([^ ]+)$/, ' or $1')}.`);
+      announce(`${msg} ${strikePrompt()}`);
       return;
     }
-    if (game.winner === 0) { endGame(true, msg); return; }
+    if (game.winner === ME) { endGame(true, msg); return; }
     if (ev.again) {
       refreshAll();
       announce(`${msg} Go again.`);
@@ -487,7 +507,7 @@
     const reply = ai.takeTurn().map(e => describe(e, false)).join(' ');
     addLog(reply);
     msg += ' ' + reply;
-    if (game.winner === 1) { endGame(false, msg); return; }
+    if (game.winner === 1 - ME) { endGame(false, msg); return; }
 
     refreshAll();
     announce(msg);
@@ -531,9 +551,9 @@
       t = x.result === 'miss' ? `${pos}, miss.` : x.result === 'hit' ? `${pos}, hit!` : `${pos}, hit. You sank their ${x.ship.def.name}!`;
       if (x.squadronLost) t += ` Enemy attack squadron ${x.squadronLost} destroyed on their carrier.`;
     } else {
-      t = x.result === 'miss' ? `Computer fires at ${pos}, miss.`
-        : x.result === 'hit' ? `Computer fires at ${pos}, hits your ${x.ship.def.name}.`
-        : `Computer fires at ${pos} and sinks your ${x.ship.def.name}!`;
+      t = x.result === 'miss' ? `${FOE()} fires at ${pos}, miss.`
+        : x.result === 'hit' ? `${FOE()} fires at ${pos}, hits your ${x.ship.def.name}.`
+        : `${FOE()} fires at ${pos} and sinks your ${x.ship.def.name}!`;
       if (x.squadronLost) t += ` Your attack squadron ${x.squadronLost} was destroyed on the carrier.`;
     }
     return t;
@@ -662,6 +682,7 @@
   }
 
   function refreshAll() {
+    renderOnline();
     enemyGrid.refresh();
     playerGrid.refresh();
     updateFleetStatus();
@@ -675,7 +696,7 @@
     const sank = FLEET.filter(d => foe().board.isSunk(d.id)).length;
     const summary = won
       ? `Victory! You sank the entire enemy fleet, hitting ${shots} squares.`
-      : `Defeat. The computer sank your whole fleet. You sank ${sank} of 5 ships. Enemy ships are now shown on their grid.`;
+      : `Defeat. ${NET.on ? 'Your opponent' : 'The computer'} sank your whole fleet. You sank ${sank} of 5 ships. Enemy ships are now shown on their grid.`;
     lastMessage = `${lastShot} ${summary}`;
     $('over-text').textContent = lastMessage;
     $('over').hidden = false;
@@ -684,6 +705,14 @@
   }
 
   $('new-game').addEventListener('click', () => {
+    if (NET.on) { leaveOnline(); return; }
+    resetToSetup();
+    announce('New game. ' + placingText());
+  });
+
+  // Back to a fresh setup against the computer (also used when leaving or entering an online game).
+  function resetToSetup() {
+    ME = 0;
     game = new Game(advancedChosen(), plusOneChosen());
     ai = null;
     phase = 'setup';
@@ -697,10 +726,325 @@
     $('status-btn').hidden = true;
     $('setup').hidden = false;
     $('player-hint').hidden = false;
+    $('log').innerHTML = '';
     updateSetup();
+    renderOnline();
     playerGrid.focusCell(0, 0);
-    announce('New game. ' + placingText());
+  }
+
+  // ---------- Online play (Firebase Realtime Database) ----------
+  // Each game lives at salvoCommand/CODE as { ver, state, t, by, act }. state is JSON:
+  // { opts: {advanced, plusOne}, host: {dev, fleet}, guest: {dev, fleet} | null, actions: [[side, action], ...], resign: null | 'host' | 'guest' }
+  // The host is side 0 and fires first. Once both fleets are in, every device rebuilds the same game by
+  // replaying the actions through the rules engine, which has no randomness, so both players always agree.
+  // The rules (database.rules.json) only accept each change as exactly one version newer than the last.
+  const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const SESSION_KEY = 'sc-online';
+  const WEB_HOME = 'https://christopherabel3000-creator.github.io/Advanced-Battleship/';
+  const CONN_ERR = 'Could not reach the online game server. Check your internet connection and try again.';
+  const NO_NET = "Online play isn't available right now.";
+  const LOCKED = 'Your fleet is locked in. The battle starts when your opponent is ready.';
+
+  const DEVICE = (() => {
+    let id = null;
+    try { id = localStorage.getItem('sc-device'); } catch (e) {}
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      try { localStorage.setItem('sc-device', id); } catch (e) {}
+    }
+    return id;
+  })();
+  const isNativeApp = () => { try { const C = window.Capacitor; return !!(C && C.isNativePlatform && C.isNativePlatform()); } catch (e) { return false; } };
+  // In the App Store app the page has no web address of its own, so the invite link points at the game's website.
+  const inviteLink = code => (isNativeApp() ? WEB_HOME : location.origin + location.pathname) + '?g=' + code;
+  const foeRole = () => (NET.role === 'host' ? 'guest' : 'host');
+  const hasFleet = (st, k) => !!(st && st[k] && st[k].fleet);
+  const showErr = t => { $('on-err').textContent = t; };
+  function saveSession(code) { try { if (code) localStorage.setItem(SESSION_KEY, code); else localStorage.removeItem(SESSION_KEY); } catch (e) {} }
+  function loadSession() { try { return localStorage.getItem(SESSION_KEY); } catch (e) { return null; } }
+  function setUrl(code) { try { history.replaceState(null, '', code ? '?g=' + code : location.pathname); } catch (e) {} }
+
+  function netReady() { const c = window.FIREBASE_CONFIG; return typeof firebase !== 'undefined' && !!c && !!c.apiKey && !!c.databaseURL; }
+  function netDb() {
+    if (!NET.db) {
+      const app = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(window.FIREBASE_CONFIG);
+      NET.db = app.database();
+      NET.db.ref('.info/connected').on('value', snap => {
+        const c = !!snap.val(), had = NET.everConnected, was = NET.connected;
+        NET.connected = c;
+        if (c) NET.everConnected = true;
+        if (!NET.on || !had || was === c) return;
+        addLog(c ? 'Reconnected to the online game.' : 'Connection lost. Trying to reconnect.');
+        announce(c ? 'Reconnected.' : 'Connection lost. Trying to reconnect.', false);
+      });
+    }
+    return NET.db;
+  }
+  // Change the shared game safely. fn edits the parsed state; returning false cancels the change.
+  function txn(ref, fn, act) {
+    return ref.transaction(cur => {
+      if (cur === null) return null;
+      let st; try { st = JSON.parse(cur.state); } catch (e) { return; }
+      if (fn(st) === false) return;
+      return { ver: cur.ver + 1, state: JSON.stringify(st), t: Date.now(), by: DEVICE, act };
+    }, null, false).then(res => res.committed && res.snapshot.exists());
+  }
+
+  // A fleet as stored online: each ship's first square and direction, and the squadrons' carrier squares.
+  function fleetData(side) {
+    const ships = {};
+    for (const d of FLEET) {
+      const s = side.board.ships[d.id];
+      ships[d.id] = [s.cells[0][0], s.cells[0][1], s.horizontal ? 1 : 0];
+    }
+    return { ships, sq: game.advanced ? side.squadrons.map(q => q.cell) : null };
+  }
+  function loadFleet(side, f) {
+    side.board.clear();
+    for (const d of FLEET) {
+      const p = f.ships && f.ships[d.id];
+      if (!p || !side.board.place(d, p[0], p[1], !!p[2])) return false;
+    }
+    if (side.advanced) {
+      if (!Array.isArray(f.sq) || f.sq.length !== 2) return false;
+      for (let i = 0; i < 2; i++) if (!f.sq[i] || !side.placeSquadron(i + 1, f.sq[i][0], f.sq[i][1])) return false;
+    }
+    return true;
+  }
+  // Rebuilds the whole game from the shared record. Returns null if the record doesn't make sense.
+  function buildGame(st, upTo) {
+    const g = new Game(!!st.opts.advanced, !!st.opts.plusOne);
+    if (!loadFleet(g.sides[0], st.host.fleet) || !loadFleet(g.sides[1], st.guest.fleet)) return null;
+    const n = upTo === undefined ? st.actions.length : upTo;
+    for (let k = 0; k < n; k++) {
+      const [side, a] = st.actions[k];
+      if (g.act(side, a).error) return null;
+    }
+    return g;
+  }
+
+  async function hostOnline() {
+    showErr('');
+    if (!netReady()) return showErr(NO_NET);
+    const db = netDb();
+    try {
+      for (let i = 0; i < 6; i++) {
+        const code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+        const ref = db.ref('salvoCommand/' + code);
+        // A game nobody has touched in a week is cleared away, so its code can be used again.
+        try { const cur = (await ref.once('value')).val(); if (cur && cur.t < Date.now() - 7 * 86400000 - 60000) await ref.remove(); } catch (e) { /* the code is just taken */ }
+        const st = { opts: { advanced: advancedChosen(), plusOne: plusOneChosen() }, host: { dev: DEVICE, fleet: null }, guest: null, actions: [], resign: null };
+        const res = await ref.transaction(cur => (cur ? undefined : { ver: 1, state: JSON.stringify(st), t: Date.now(), by: DEVICE, act: 'create' }), null, false);
+        if (res.committed) return enterOnline(code, 'host', ref, st);
+      }
+      showErr('Could not create a game code. Try again.');
+    } catch (e) { showErr(CONN_ERR); }
+  }
+
+  async function joinOnline(raw) {
+    showErr('');
+    if (!netReady()) return showErr(NO_NET);
+    const code = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (!/^[A-Z]{4}$/.test(code)) return showErr('Game codes are four letters, like KDRT.');
+    const ref = netDb().ref('salvoCommand/' + code);
+    try {
+      const v = (await ref.once('value')).val();
+      if (!v) return showErr(`There's no game with code ${code}. Check the code with your friend.`);
+      const st = JSON.parse(v.state);
+      if (st.host && st.host.dev === DEVICE) return enterOnline(code, 'host', ref, st);
+      if (st.guest && st.guest.dev === DEVICE) return enterOnline(code, 'guest', ref, st);
+      if (st.guest) return showErr(`Game ${code} already has two players.`);
+      const ok = await txn(ref, s => { if (s.guest && s.guest.dev !== DEVICE) return false; if (!s.guest) s.guest = { dev: DEVICE, fleet: null }; }, 'join');
+      if (!ok) return showErr(`Game ${code} already has two players.`);
+      enterOnline(code, 'guest', ref, st);
+    } catch (e) { showErr(CONN_ERR); }
+  }
+
+  function enterOnline(code, role, ref, st) {
+    if (NET.ref) NET.ref.off();
+    // The host's choice of weapons and turn rules applies to both players.
+    $('mode-advanced').checked = !!st.opts.advanced;
+    $('mode-basic').checked = !st.opts.advanced;
+    $('plus-one').checked = !!st.opts.plusOne;
+    Object.assign(NET, { on: true, role, code, ref, st: null, busy: false, applied: 0, ready: false });
+    resetToSetup();
+    ME = role === 'host' ? 0 : 1;
+    saveSession(code); setUrl(code); showErr('');
+    const rules = `${st.opts.advanced ? 'Advanced' : 'Basic'} weapons${st.opts.plusOne ? ', target plus 1' : ''}.`;
+    const text = role === 'host'
+      ? `You're hosting online game ${code}. ${rules} Send your friend the code or the invite link, and place your fleet while you wait.`
+      : `You joined online game ${code}. ${rules} Place your fleet, then press I'm ready.`;
+    addLog(text);
+    announce(text);
+    updateSetup();
+    renderOnline();
+    ref.on('value', snap => onRemote(snap.val()), () => showErr(CONN_ERR));
+  }
+
+  function leaveOnline() {
+    const keep = phase === 'battle' ? NET.code : null;
+    if (NET.ref) NET.ref.off();
+    Object.assign(NET, { on: false, role: null, code: null, ref: null, st: null, busy: false, applied: 0, ready: false });
+    saveSession(keep); setUrl(null);
+    resetToSetup();
+    announce(keep ? `You left the online game. You can rejoin game ${keep} later from the Online play section.` : 'You left the online game. You are now playing the computer.');
+  }
+
+  function onRemote(v) {
+    if (!NET.on) return;
+    if (!v) { showErr(`Online game ${NET.code} no longer exists.`); return; }
+    let st; try { st = JSON.parse(v.state); } catch (e) { return; }
+    const prev = NET.st, mine = NET.role, them = foeRole();
+    NET.st = st;
+    if (mine === 'host' && prev && st.guest && !prev.guest) { addLog('Your opponent joined the game.'); announce('Your opponent joined the game.', false); }
+    if (hasFleet(st, mine) && !NET.ready) {
+      // Coming back to a game: put the fleet we sent back on the grid.
+      if (phase === 'setup') { loadFleet(me(), st[mine].fleet); current = null; }
+      NET.ready = true;
+    }
+    if (phase === 'setup') {
+      if (hasFleet(st, 'host') && hasFleet(st, 'guest')) beginOnline(st);
+      else {
+        if (prev && hasFleet(st, mine) && !hasFleet(prev, mine)) { addLog("You're ready. Waiting for your opponent to place their fleet."); announce("You're ready. Waiting for your opponent to place their fleet."); }
+        if (prev && hasFleet(st, them) && !hasFleet(prev, them)) { addLog('Your opponent has placed their fleet.'); announce('Your opponent has placed their fleet.', false); }
+        updateSetup();
+      }
+    } else if (phase === 'battle') syncActions(st);
+    if (st.resign && phase === 'battle') {
+      const text = st.resign === mine ? 'You resigned.' : 'Your opponent resigned.';
+      addLog(text);
+      endGame(st.resign !== mine, text);
+    }
+    renderOnline();
+  }
+
+  function beginOnline(st) {
+    const g = buildGame(st, 0);
+    if (!g) { showErr('This online game has a problem with a fleet. Leave it and host a new one.'); return; }
+    game = g;
+    ME = NET.role === 'host' ? 0 : 1;
+    NET.applied = 0;
+    showBattle();
+    const replaying = st.actions.length > 0;
+    const first = ME === 0 ? 'You fire first.' : 'Your opponent fires first.';
+    addLog('Both fleets are ready. ' + first);
+    syncActions(st, replaying);
+    if (replaying && phase === 'battle') {
+      announce(`Rejoined game ${NET.code} after ${st.actions.length} moves. ` + (game.turn === ME ? 'Your turn.' : "Your opponent's turn."));
+    } else if (!replaying) {
+      announce(`Battle stations, ${game.advanced ? 'advanced' : 'basic'} weapons${game.plusOne ? ', target plus 1' : ''}. ${first}`);
+    }
+  }
+
+  // Applies any new actions from the shared record, then says what happened.
+  function syncActions(st, quiet) {
+    const msgs = [];
+    let lastSide = null;
+    while (NET.applied < st.actions.length && game.winner === null) {
+      const [side, a] = st.actions[NET.applied];
+      const ev = game.act(side, a);
+      NET.applied++;
+      if (ev.error) {
+        addLog('The game got out of step with your opponent. Leave the online game and rejoin it with the same code to reload it.');
+        break;
+      }
+      const text = describe(ev, side === ME);
+      addLog(text);
+      msgs.push(text);
+      lastSide = side;
+    }
+    if (!msgs.length) { refreshAll(); return; }
+    let text = msgs.join(' ');
+    if (game.winner !== null) { endGame(game.winner === ME, text); return; }
+    refreshAll();
+    if (quiet) return;
+    if (myStrike()) text += ' ' + strikePrompt();
+    else if (game.turn === ME) text += lastSide === ME ? ' Go again.' : ' Your turn.';
+    announce(text);
+  }
+
+  function sendOnline(a) {
+    if (NET.busy) return announce('Still sending your last move. One moment.', false);
+    if (game.turn !== ME) return announce("It's your opponent's turn.", false);
+    // Try the move on a copy first, so a mistake gets its message without being sent.
+    const test = buildGame(NET.st, NET.applied);
+    const ev = test ? test.act(ME, a) : { error: 'The game is still loading.' };
+    if (ev.error) return announce(ev.error);
+    const n = NET.applied;
+    NET.busy = true;
+    txn(NET.ref, st => { if (st.actions.length !== n || st.resign) return false; st.actions.push([ME, a]); }, 'act')
+      .then(ok => { NET.busy = false; if (!ok) announce("Your move didn't go through because the game changed. Check the battle log and try again."); })
+      .catch(() => { NET.busy = false; announce("Your move didn't go through because the connection dropped. Try again."); });
+  }
+
+  function readyOnline() {
+    if (NET.ready) return announce(LOCKED);
+    if (!me().ready()) return announce(placingText());
+    if (NET.busy) return;
+    const fleet = fleetData(me());
+    NET.busy = true;
+    txn(NET.ref, st => { if (!st[NET.role] || st[NET.role].fleet) return false; st[NET.role].fleet = fleet; }, 'ready')
+      .then(ok => { NET.busy = false; if (!ok && !NET.ready) announce("Couldn't send your fleet. Try again."); })
+      .catch(() => { NET.busy = false; announce(CONN_ERR); });
+  }
+
+  let resignTimer = null;
+  function resignOnline() {
+    if (!NET.on || phase !== 'battle') return;
+    const b = $('resign');
+    if (!resignTimer) {
+      b.textContent = 'Press again to resign';
+      announce('Press Resign again within five seconds to give up this game.', false);
+      resignTimer = setTimeout(() => { resignTimer = null; b.textContent = 'Resign'; }, 5000);
+      return;
+    }
+    clearTimeout(resignTimer); resignTimer = null; b.textContent = 'Resign';
+    txn(NET.ref, st => { if (st.resign) return false; st.resign = NET.role; }, 'resign').catch(() => announce(CONN_ERR));
+  }
+
+  function renderOnline() {
+    $('on-off').hidden = NET.on;
+    $('on-on').hidden = !NET.on;
+    const saved = !NET.on && loadSession();
+    $('rejoin').hidden = !saved;
+    if (saved) $('rejoin').textContent = `Rejoin game ${saved}`;
+    for (const id of ['mode-basic', 'mode-advanced', 'plus-one']) $(id).disabled = NET.on;
+    if (!NET.on) return;
+    $('on-code').textContent = NET.code.split('').join(' ');
+    $('on-link').textContent = inviteLink(NET.code);
+    $('resign').hidden = phase !== 'battle';
+    const st = NET.st, them = foeRole();
+    let s = 'Connecting.';
+    if (st) {
+      if (!st[them]) s = 'Waiting for your opponent to join.';
+      else if (phase === 'setup') s = hasFleet(st, them) ? 'Your opponent is ready.' : 'Your opponent is placing their fleet.';
+      else if (phase === 'battle') s = game.turn === ME ? 'Your turn.' : "Your opponent's turn.";
+      else s = 'Game over.';
+    }
+    $('on-status').textContent = 'Status: ' + s;
+  }
+
+  function bootOnline() {
+    let code = null;
+    try { const m = location.search.match(/[?&]g=([A-Za-z]{4})\b/); if (m) code = m[1].toUpperCase(); } catch (e) {}
+    if (code) joinOnline(code);
+    renderOnline();
+  }
+
+  $('host').addEventListener('click', hostOnline);
+  $('rejoin').addEventListener('click', () => joinOnline(loadSession()));
+  $('join-form').addEventListener('submit', e => { e.preventDefault(); joinOnline($('join-code').value); });
+  $('leave').addEventListener('click', leaveOnline);
+  $('resign').addEventListener('click', resignOnline);
+  $('copy-link').addEventListener('click', async () => {
+    const link = inviteLink(NET.code);
+    try { await navigator.clipboard.writeText(link); announce('Invite link copied.', false); }
+    catch (e) {
+      try { const r = document.createRange(); r.selectNodeContents($('on-link')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (e2) {}
+      announce('Copying was blocked, so the invite link is selected. Press Control C, or Command C on a Mac, to copy it.', false);
+    }
   });
 
   updateSetup();
+  bootOnline();
 })();

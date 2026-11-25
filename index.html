@@ -2,19 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Advanced Battleship</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Salvo Command</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
-    <h1>Advanced Battleship</h1>
+    <h1>Salvo Command</h1>
 
     <p id="status" class="status" role="status" aria-live="polite"></p>
     <div class="controls">
       <button type="button" id="repeat">Repeat last message</button>
       <button type="button" id="status-btn" hidden>Fleet status</button>
     </div>
+
+    <section id="online" aria-labelledby="online-h">
+      <h2 id="online-h">Online play</h2>
+      <div id="on-off">
+        <p>Play a friend over the internet. Choose the weapons and turn rules below, then host a game and send your friend the code, or type their code to join.</p>
+        <div class="controls">
+          <button type="button" id="host">Host an online game</button>
+          <button type="button" id="rejoin" hidden>Rejoin game</button>
+        </div>
+        <form id="join-form" class="controls" autocomplete="off">
+          <label for="join-code">Game code</label>
+          <input id="join-code" type="text" maxlength="4" autocapitalize="characters" spellcheck="false" size="5">
+          <button type="submit">Join</button>
+        </form>
+      </div>
+      <div id="on-on" hidden>
+        <p>Game code <span id="on-code" class="gamecode"></span></p>
+        <p>Invite link: <span id="on-link" class="link"></span></p>
+        <p id="on-status"></p>
+        <div class="controls">
+          <button type="button" id="copy-link">Copy invite link</button>
+          <button type="button" id="resign" hidden>Resign</button>
+          <button type="button" id="leave">Leave online game</button>
+        </div>
+      </div>
+      <p id="on-err" class="err" role="alert"></p>
+    </section>
 
     <section id="setup" aria-labelledby="setup-h">
       <h2 id="setup-h">Place your fleet</h2>
@@ -100,6 +130,8 @@
         <li>On a phone, use the Place at and Fire at boxes, the Repeat last message and Fleet status buttons, and the Weapon menu instead of keys.</li>
         <li>Advanced weapons: W picks the next weapon and Shift W the previous one. R switches the search pattern or direction.</li>
       </ul>
+      <h3>Online play</h3>
+      <p>Press Host an online game to get a four-letter code and an invite link for your friend. The host's choice of weapons and turn rules applies to both of you. You each place your fleet and press I'm ready, and the host fires first. If you leave or lose your connection, rejoin with the same code and the game picks up where it was.</p>
       <h3>Fleet</h3>
       <p>Aircraft carrier (5), battleship (4), light missile cruiser (3), fast attack sub (3), special operations craft (2).</p>
       <h3>Advanced weapons</h3>
@@ -115,8 +147,14 @@
       <h3>Target plus 1</h3>
       <p>An optional rule for either weapons mode. Any shot or weapon that damages a ship earns another turn, including a squadron's strike and a Tomahawk, harpoon or torpedo that hits anything. An antiaircraft hit on a squadron also earns another turn. Misses, searches that only observe, and sonar end your turn.</p>
     </details>
+    <footer>
+      <a href="privacy.html">Privacy policy</a> · <a href="support.html">Help and support</a>
+    </footer>
   </main>
 
+  <script src="vendor/firebase/firebase-app-compat.js"></script>
+  <script src="vendor/firebase/firebase-database-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/ui.js"></script>
 </body>
