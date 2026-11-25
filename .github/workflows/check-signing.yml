@@ -1,5 +1,7 @@
 # Checks the App Store signing secrets without building anything: it signs in to the App Store
 # Connect API with them and reports whether Apple accepts the key and whether the app record exists.
+# It also registers the app ID com.playbyear.salvocommand with Apple if it isn't registered yet,
+# which App Store Connect needs before the app record can be created.
 # Run it from the Actions tab (Check signing secrets, Run workflow). The key itself is never printed.
 name: Check signing secrets
 
@@ -43,6 +45,14 @@ jobs:
           if r.status_code != 200:
               say(f"Apple answered {r.status_code}: {r.text[:300]}"); sys.exit(1)
           say("Apple ACCEPTED the key: the Key ID, Issuer ID and key file all match.")
+          H = {"Authorization": "Bearer " + token}
+          b = requests.get("https://api.appstoreconnect.apple.com/v1/bundleIds", params={"filter[identifier]": "com.playbyear.salvocommand"}, headers=H, timeout=30)
+          found = [x for x in b.json().get("data", []) if x["attributes"]["identifier"] == "com.playbyear.salvocommand"] if b.status_code == 200 else []
+          if found: say("App ID com.playbyear.salvocommand: already registered.")
+          else:
+              c = requests.post("https://api.appstoreconnect.apple.com/v1/bundleIds", headers=H, timeout=30,
+                                json={"data": {"type": "bundleIds", "attributes": {"identifier": "com.playbyear.salvocommand", "name": "Salvo Command", "platform": "IOS"}}})
+              say("App ID com.playbyear.salvocommand: " + ("registered now." if c.status_code == 201 else f"could not register ({c.status_code}): {c.text[:300]}"))
           apps = r.json().get("data", [])
           say("App record for com.playbyear.salvocommand: " + ("found, named " + apps[0]["attributes"]["name"] if apps else "not created yet (needed before the first TestFlight upload)."))
           PY
