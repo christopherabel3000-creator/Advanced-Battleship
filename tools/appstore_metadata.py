@@ -132,7 +132,7 @@ def review():
     else:
         call("POST", "/v1/appStoreReviewDetails", json={"data": {"type": "appStoreReviewDetails", "attributes": attrs,
              "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": VER}}}}})
-    return "contact copied from Hidden Ranks; notes " + ("with the recording link" if link else "waiting for the recording link")
+    return "contact copied from Hidden Ranks; notes " + ("waiting for the recording link" if "RECORDING_LINK" in notes else "with the recording link")
 step("review contact and notes", review)
 
 say("Done with " + (f"{len(problems)} problem(s): " + ", ".join(problems) if problems else "no problems."))
