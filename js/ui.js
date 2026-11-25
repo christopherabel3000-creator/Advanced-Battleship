@@ -520,18 +520,47 @@
     enemyGrid.focusCell(0, 0);
   }
 
+  // The action for a weapon at a square. pattern and dir default to the menu's current settings.
+  function actionFor(w, r, c, pattern, dir) {
+    switch (w) {
+      case 'sq1': case 'sq2': return { type: 'search', n: +w[2], pattern: pattern || searchPattern, r, c };
+      case 'harpoon': case 'torpedo': return { type: w, dir: dir || lineDir, r, c };
+      case 'tomahawk': case 'sonar': case 'aa': return { type: w, r, c };
+      default: return { type: 'shot', r, c };
+    }
+  }
+
   function enemyActivate(r, c) {
     if (phase !== 'battle') return;
     if (myStrike()) { doAction({ type: 'strike', r, c }); return; }
-    switch (weapon) {
-      case 'shot': doAction({ type: 'shot', r, c }); break;
-      case 'sq1': case 'sq2': doAction({ type: 'search', n: +weapon[2], pattern: searchPattern, r, c }); break;
-      case 'tomahawk': doAction({ type: 'tomahawk', r, c }); break;
-      case 'harpoon': doAction({ type: 'harpoon', dir: lineDir, r, c }); break;
-      case 'torpedo': doAction({ type: 'torpedo', dir: lineDir, r, c }); break;
-      case 'sonar': doAction({ type: 'sonar', r, c }); break;
-      case 'aa': announce('The antiaircraft battery fires over your own waters. Choose a square on your fleet grid.'); break;
+    if (weapon === 'aa') { announce('The antiaircraft battery fires over your own waters. Choose a square on your fleet grid.'); return; }
+    doAction(actionFor(weapon, r, c));
+  }
+
+  // Typed commands in the Fire at box: a square alone uses the Weapon menu, or name a weapon, like
+  // "sonar b2", "tomahawk e5", "harpoon horizontal d4", "torpedo vertical a1", "antiair h10", "squad1 plus i11".
+  const WEAPON_WORDS = {
+    shot: 'shot', fire: 'shot', sonar: 'sonar', ping: 'sonar', tomahawk: 'tomahawk', toma: 'tomahawk', tom: 'tomahawk',
+    harpoon: 'harpoon', harp: 'harpoon', torpedo: 'torpedo', torp: 'torpedo', aa: 'aa', sq1: 'sq1', sq2: 'sq2',
+  };
+  const DIR_WORDS = { horizontal: 'h', h: 'h', across: 'h', row: 'h', vertical: 'v', v: 'v', down: 'v', column: 'v', col: 'v' };
+  const PATTERN_WORDS = { x: 'x', plus: 'plus', '+': 'plus', cross: 'plus' };
+  function parseCommand(text) {
+    const t = String(text || '').toLowerCase()
+      .replace(/\b(?:squadron|squad|sq)\s*([12])\b/g, ' sq$1 ')
+      .replace(/\banti[\s-]?air(?:craft)?\b/g, ' aa ');
+    const squares = t.match(/\b[a-j]\s*-?\s*\d{1,2}\b/g) || [];
+    if (squares.length !== 1) return { error: 'Type a square, like C7, or a weapon and a square, like sonar B2.' };
+    const p = parseCoord(squares[0]);
+    if (!p) return { error: 'Squares go from A1 to J14.' };
+    const cmd = { r: p.r, c: p.c, w: null, pattern: null, dir: null };
+    for (const word of t.replace(squares[0], ' ').split(/[\s,]+/).filter(Boolean)) {
+      if (WEAPON_WORDS[word]) cmd.w = WEAPON_WORDS[word];
+      else if (DIR_WORDS[word]) cmd.dir = DIR_WORDS[word];
+      else if (PATTERN_WORDS[word]) cmd.pattern = PATTERN_WORDS[word];
+      else return { error: `I didn't understand "${word}". Try a weapon and a square, like tomahawk E5 or squad1 plus I11.` };
     }
+    return cmd;
   }
 
   function strikePrompt() {
@@ -571,14 +600,20 @@
 
   $('fire-form').addEventListener('submit', e => {
     e.preventDefault();
+    if (phase !== 'battle') return;
     const input = $('fire-input');
-    const p = parseCoord(input.value);
-    if (!p) { announce('Type a square from A1 to J14, like C7.'); return; }
+    const cmd = parseCommand(input.value);
+    if (cmd.error) { announce(cmd.error); return; }
     input.value = '';
-    if (weapon === 'aa' && !game.pendingStrike) doAction({ type: 'aa', r: p.r, c: p.c });
-    else enemyActivate(p.r, p.c);
+    // No weapon named: a squadron strike if one is waiting, otherwise the Weapon menu's choice.
+    if (!cmd.w) {
+      if (weapon === 'aa' && !myStrike()) doAction({ type: 'aa', r: cmd.r, c: cmd.c });
+      else enemyActivate(cmd.r, cmd.c);
+      return;
+    }
+    if (cmd.w !== 'shot' && !game.advanced) { announce('Advanced weapons are off in this game.'); return; }
+    doAction(actionFor(cmd.w, cmd.r, cmd.c, cmd.pattern, cmd.dir));
   });
-
   // ---------- Words for what happened ----------
   function damageText(results, mine) {
     const hits = results.filter(x => x.result === 'hit' || x.result === 'sunk');

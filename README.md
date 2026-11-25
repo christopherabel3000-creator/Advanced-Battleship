@@ -45,6 +45,7 @@ An optional rule, chosen at setup, that works with either weapons mode. Any acti
 - Enter or Space places a ship or fires.
 - Setup: `R` rotates. Choosing a placed ship picks it back up.
 - Battle: `S` reads fleet status, `L` repeats the last message. There's also a "Fire at" box.
+- Advanced weapons can be typed in the Fire at box: `sonar b2`, `tomahawk e5`, `harpoon horizontal d4`, `torpedo vertical a1`, `antiair h10`, `squad1 plus i11` (short forms: `aa`, `torp`, `h`, `v`, `x`).
 - Advanced: `W` / `Shift+W` change weapon, `R` switches pattern or direction. The antiaircraft battery fires from your own fleet grid.
 - On a phone: the Place at and Fire at boxes, the Weapon menu, and the Repeat last message and Fleet status buttons do everything.
 
